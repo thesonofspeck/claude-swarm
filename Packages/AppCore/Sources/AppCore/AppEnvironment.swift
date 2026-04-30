@@ -74,6 +74,9 @@ public final class AppEnvironment: ObservableObject {
 
         let registryRef = self.registry
         let repoRef = self.sessionsRepo
+        let janitor = WorktreeJanitor(projects: projects, sessions: sessionsRepo)
+        Task.detached { _ = await janitor.reconcile() }
+
         let server = HookSocketServer(socketURL: AppDirectories.hooksSocket) { [weak notifier] event in
             Task { @MainActor in
                 guard let id = event.sessionId else { return }

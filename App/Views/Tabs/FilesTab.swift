@@ -2,6 +2,7 @@ import SwiftUI
 import AppCore
 import PersistenceKit
 import DiffViewer
+import GitKit
 import Splash
 
 struct FilesTab: View {
@@ -14,6 +15,7 @@ struct FilesTab: View {
     @State private var fileExtension: String = ""
     @State private var loadingFile = false
     @State private var error: String?
+    @State private var watcher: FileWatcher?
 
     private var isSwift: Bool { fileExtension == "swift" }
 
@@ -29,7 +31,21 @@ struct FilesTab: View {
                 .frame(minWidth: 240, idealWidth: 280)
             preview
         }
-        .task(id: session.id) { await loadTree() }
+        .task(id: session.id) {
+            await loadTree()
+            startWatching()
+        }
+        .onDisappear { watcher?.stop(); watcher = nil }
+    }
+
+    private func startWatching() {
+        watcher?.stop()
+        let url = URL(fileURLWithPath: session.worktreePath)
+        let w = FileWatcher(url: url) {
+            Task { @MainActor in await loadTree() }
+        }
+        w.start()
+        watcher = w
     }
 
     private var tree: some View {

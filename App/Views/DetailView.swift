@@ -142,6 +142,7 @@ struct DiffTab: View {
     let session: Session
     @State private var files: [DiffFile] = []
     @State private var loading = true
+    @State private var watcher: FileWatcher?
 
     var body: some View {
         Group {
@@ -152,9 +153,23 @@ struct DiffTab: View {
             }
         }
         .task(id: session.id) {
-            loading = true
+            await reload()
+            watcher?.stop()
             let url = URL(fileURLWithPath: session.worktreePath)
-            files = (try? await env.diff.workingTreeDiff(in: url)) ?? []
+            let w = FileWatcher(url: url) {
+                Task { await reload() }
+            }
+            w.start()
+            watcher = w
+        }
+        .onDisappear { watcher?.stop(); watcher = nil }
+    }
+
+    private func reload() async {
+        let url = URL(fileURLWithPath: session.worktreePath)
+        let result = (try? await env.diff.workingTreeDiff(in: url)) ?? []
+        await MainActor.run {
+            files = result
             loading = false
         }
     }
