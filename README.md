@@ -100,6 +100,36 @@ the app listens on. Sessions waiting for input get a yellow pulse in the
 sidebar, a dock-badge count, a macOS notification (suppressed when
 foreground), and a count in the menu bar.
 
+## iOS companion (Claude Swarm Remote)
+
+Pair an iPhone to your Mac over local network or VPN to:
+
+- See every Mac session and its status
+- Get rich push notifications when an agent needs input or approval —
+  Approve / Deny action buttons inline on the lock screen
+- Tap a destructive tool call (`Bash(rm -rf …)`) and read the full
+  prompt before approving
+- Tap into a session and send a free-form message to the running `claude`
+
+```sh
+brew install xcodegen
+cd ios && xcodegen generate
+open ClaudeSwarmRemote.xcodeproj
+```
+
+The iOS app talks directly to the Mac on a WebSocket (port 7321 by default,
+advertised over Bonjour as `_claudeswarm._tcp`). APNs pushes are sent
+**directly from the Mac to Apple** using a `.p8` key uploaded in
+**Settings → APNs** — no relay server.
+
+When ≥1 paired iPhone is online, the Mac holds a
+`PreventUserIdleSystemSleep` IOPMAssertion so hooks keep firing while
+you step away. The assertion releases automatically on battery
+(toggleable in Settings → iPhone).
+
+See [`docs/ios-pairing.md`](docs/ios-pairing.md) for the full pairing +
+APNs setup walkthrough.
+
 ## Keyboard shortcuts
 
 | Shortcut | Action |
