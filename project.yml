@@ -30,6 +30,8 @@ packages:
   PairingService:    { path: Packages/PairingService }
   ApnsClient:        { path: Packages/ApnsClient }
   SleepGuard:        { path: Packages/SleepGuard }
+  ToolDetector:      { path: Packages/ToolDetector }
+  BrewInstaller:     { path: Packages/BrewInstaller }
 
 targets:
   ClaudeSwarm:
@@ -91,6 +93,10 @@ targets:
         product: ApnsClient
       - package: SleepGuard
         product: SleepGuard
+      - package: ToolDetector
+        product: ToolDetector
+      - package: BrewInstaller
+        product: BrewInstaller
 
   swarm-memory-mcp:
     type: tool

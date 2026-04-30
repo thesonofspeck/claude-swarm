@@ -20,7 +20,9 @@ let package = Package(
         .package(path: "../PairingProtocol"),
         .package(path: "../PairingService"),
         .package(path: "../ApnsClient"),
-        .package(path: "../SleepGuard")
+        .package(path: "../SleepGuard"),
+        .package(path: "../ToolDetector"),
+        .package(path: "../BrewInstaller")
     ],
     targets: [
         .target(
@@ -38,7 +40,9 @@ let package = Package(
                 "PairingProtocol",
                 "PairingService",
                 "ApnsClient",
-                "SleepGuard"
+                "SleepGuard",
+                "ToolDetector",
+                "BrewInstaller"
             ]
         ),
         .testTarget(name: "AppCoreTests", dependencies: ["AppCore"])

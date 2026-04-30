@@ -45,18 +45,10 @@ struct SettingsSheet: View {
 
     private var generalTab: some View {
         Form {
-            Section("Claude Code") {
-                HStack {
-                    TextField("Executable path", text: $claudePath)
-                    Button("Locate…") {
-                        let panel = NSOpenPanel()
-                        panel.canChooseFiles = true
-                        panel.canChooseDirectories = false
-                        if panel.runModal() == .OK, let url = panel.url {
-                            claudePath = url.path
-                        }
-                    }
-                }
+            Section("Tools") {
+                ToolsStep(onContinue: {})
+                    .environmentObject(env)
+                    .frame(minHeight: 360)
             }
             Section("Defaults") {
                 TextField("Default base branch", text: $defaultBranch)

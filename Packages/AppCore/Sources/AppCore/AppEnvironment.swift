@@ -4,6 +4,7 @@ import PersistenceKit
 import GitKit
 import WrikeKit
 import GitHubKit
+import GitKit
 import SessionCore
 import MemoryService
 import ClaudeSwarmNotifications
@@ -46,7 +47,9 @@ public final class AppEnvironment: ObservableObject {
         let wrikeClient = WrikeClient(keychain: keychain)
         self.wrike = wrikeClient
         self.wrikeBridge = WrikeBridge(client: wrikeClient)
-        self.github = GitHubClient()
+        let appSettings = AppSettings.load(from: AppDirectories.settingsURL) ?? AppSettings()
+        let ghRunner = GhRunner(executable: appSettings.ghExecutable.isEmpty ? nil : appSettings.ghExecutable)
+        self.github = GitHubClient(runner: ghRunner)
         self.memory = try MemoryStore()
         self.installer = Installer()
         self.diff = DiffService()
@@ -188,20 +191,45 @@ public extension Notification.Name {
 
 public struct AppSettings: Codable, Equatable {
     public var claudeExecutable: String
+    public var ghExecutable: String
+    public var gitExecutable: String
+    public var pythonExecutable: String
     public var defaultBaseBranch: String
     public var notificationSoundEnabled: Bool
     public var hasCompletedOnboarding: Bool
 
     public init(
         claudeExecutable: String = "/usr/local/bin/claude",
+        ghExecutable: String = "",
+        gitExecutable: String = "/usr/bin/git",
+        pythonExecutable: String = "/usr/bin/python3",
         defaultBaseBranch: String = "main",
         notificationSoundEnabled: Bool = true,
         hasCompletedOnboarding: Bool = false
     ) {
         self.claudeExecutable = claudeExecutable
+        self.ghExecutable = ghExecutable
+        self.gitExecutable = gitExecutable
+        self.pythonExecutable = pythonExecutable
         self.defaultBaseBranch = defaultBaseBranch
         self.notificationSoundEnabled = notificationSoundEnabled
         self.hasCompletedOnboarding = hasCompletedOnboarding
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        claudeExecutable = (try? c.decode(String.self, forKey: .claudeExecutable)) ?? "/usr/local/bin/claude"
+        ghExecutable = (try? c.decode(String.self, forKey: .ghExecutable)) ?? ""
+        gitExecutable = (try? c.decode(String.self, forKey: .gitExecutable)) ?? "/usr/bin/git"
+        pythonExecutable = (try? c.decode(String.self, forKey: .pythonExecutable)) ?? "/usr/bin/python3"
+        defaultBaseBranch = (try? c.decode(String.self, forKey: .defaultBaseBranch)) ?? "main"
+        notificationSoundEnabled = (try? c.decode(Bool.self, forKey: .notificationSoundEnabled)) ?? true
+        hasCompletedOnboarding = (try? c.decode(Bool.self, forKey: .hasCompletedOnboarding)) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case claudeExecutable, ghExecutable, gitExecutable, pythonExecutable
+        case defaultBaseBranch, notificationSoundEnabled, hasCompletedOnboarding
     }
 
     static func load(from url: URL) -> AppSettings? {
