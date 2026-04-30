@@ -17,6 +17,7 @@ public actor SessionManager {
     public let worktreesRoot: URL
     public let memoryBinaryPath: String
     public let notifyScriptPath: String
+    public let policyScriptPath: String
 
     public init(
         sessions: SessionRepository,
@@ -26,7 +27,8 @@ public actor SessionManager {
         transcriptsRoot: URL = AppDirectories.transcriptsDir,
         worktreesRoot: URL = AppDirectories.worktreesRoot,
         memoryBinaryPath: String,
-        notifyScriptPath: String
+        notifyScriptPath: String,
+        policyScriptPath: String
     ) {
         self.sessions = sessions
         self.projects = projects
@@ -36,6 +38,7 @@ public actor SessionManager {
         self.worktreesRoot = worktreesRoot
         self.memoryBinaryPath = memoryBinaryPath
         self.notifyScriptPath = notifyScriptPath
+        self.policyScriptPath = policyScriptPath
     }
 
     /// Bootstraps a project on registration: installs the 6 default subagents,
@@ -45,7 +48,8 @@ public actor SessionManager {
             projectURL: URL(fileURLWithPath: project.localPath),
             projectId: project.id,
             memoryBinaryPath: memoryBinaryPath,
-            notifyScriptPath: notifyScriptPath
+            notifyScriptPath: notifyScriptPath,
+            policyScriptPath: policyScriptPath
         )
         try installer.install(plan, overwrite: false)
     }

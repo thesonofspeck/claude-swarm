@@ -5,12 +5,20 @@ public struct BootstrapPlan: Equatable, Sendable {
     public let projectId: String
     public let memoryBinaryPath: String
     public let notifyScriptPath: String
+    public let policyScriptPath: String
 
-    public init(projectURL: URL, projectId: String, memoryBinaryPath: String, notifyScriptPath: String) {
+    public init(
+        projectURL: URL,
+        projectId: String,
+        memoryBinaryPath: String,
+        notifyScriptPath: String,
+        policyScriptPath: String
+    ) {
         self.projectURL = projectURL
         self.projectId = projectId
         self.memoryBinaryPath = memoryBinaryPath
         self.notifyScriptPath = notifyScriptPath
+        self.policyScriptPath = policyScriptPath
     }
 }
 
@@ -40,6 +48,22 @@ public struct Installer {
         try writeSettings(plan: plan, overwrite: overwrite)
         try writeMCPConfig(plan: plan, overwrite: overwrite)
         try writeClaudeMd(plan: plan)
+        try writePolicy(plan: plan)
+    }
+
+    private func writePolicy(plan: BootstrapPlan) throws {
+        let dest = plan.projectURL.appendingPathComponent(".claude/policy.json")
+        guard !FileManager.default.fileExists(atPath: dest.path) else { return }
+        guard let url = Bundle.module.url(
+            forResource: "policy",
+            withExtension: "json",
+            subdirectory: "Resources/Templates"
+        ) else { throw InstallerError.missingResource("policy.json") }
+        try FileManager.default.createDirectory(
+            at: dest.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data(contentsOf: url).write(to: dest, options: .atomic)
     }
 
     private func writeClaudeMd(plan: BootstrapPlan) throws {
@@ -59,6 +83,7 @@ public struct Installer {
         }
         let template = try String(contentsOf: url, encoding: .utf8)
             .replacingOccurrences(of: "{{NOTIFY_SCRIPT}}", with: plan.notifyScriptPath)
+            .replacingOccurrences(of: "{{POLICY_SCRIPT}}", with: plan.policyScriptPath)
         try mergeOrWriteJSON(
             template: template,
             dest: AgentLayout.settingsFile(in: plan.projectURL),

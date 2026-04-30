@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "autoAllow": ["Read", "Glob", "Grep", "WebSearch", "TodoWrite", "Skill"],
+  "alwaysAsk": ["Bash", "Edit", "Write", "NotebookEdit", "WebFetch"],
+  "default": "ask",
+  "destructiveBashPatterns": [
+    "rm\\s+-rf",
+    "rm\\s+-fr",
+    "git\\s+push\\s+--force",
+    "git\\s+reset\\s+--hard",
+    ":\\(\\)\\s*\\{",
+    "mkfs",
+    "dd\\s+if="
+  ]
+}

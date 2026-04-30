@@ -59,13 +59,15 @@ public final class AppEnvironment: ObservableObject {
         self.notifier = notifier
 
         let notifyScript = try AppPaths.materializeNotifyScript()
+        let policyScript = try AppPaths.materializePolicyScript()
         let memoryBin = AppPaths.memoryBinary()
         let manager = SessionManager(
             sessions: sessionsRepo,
             projects: projects,
             installer: installer,
             memoryBinaryPath: memoryBin.path,
-            notifyScriptPath: notifyScript.path
+            notifyScriptPath: notifyScript.path,
+            policyScriptPath: policyScript.path
         )
         self.sessionManager = manager
         self.projectList = ProjectListViewModel(

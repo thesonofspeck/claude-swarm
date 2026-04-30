@@ -18,4 +18,9 @@ public enum AppPaths {
         try AppDirectories.ensureExists()
         return try BootstrapResources.materializeNotifyScript(into: AppDirectories.binDir)
     }
+
+    public static func materializePolicyScript() throws -> URL {
+        try AppDirectories.ensureExists()
+        return try BootstrapResources.materializePolicyScript(into: AppDirectories.binDir)
+    }
 }

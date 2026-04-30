@@ -12,7 +12,8 @@ final class InstallerTests: XCTestCase {
             projectURL: temp,
             projectId: "P1",
             memoryBinaryPath: "/usr/local/bin/swarm-memory-mcp",
-            notifyScriptPath: "/usr/local/bin/notify.sh"
+            notifyScriptPath: "/usr/local/bin/notify.sh",
+            policyScriptPath: "/usr/local/bin/policy.sh"
         )
         try Installer().install(plan, overwrite: true)
 
@@ -47,7 +48,8 @@ final class InstallerTests: XCTestCase {
             projectURL: temp,
             projectId: "P1",
             memoryBinaryPath: "/m",
-            notifyScriptPath: "/n"
+            notifyScriptPath: "/n",
+            policyScriptPath: "/p"
         )
         try Installer().install(plan, overwrite: false)
 

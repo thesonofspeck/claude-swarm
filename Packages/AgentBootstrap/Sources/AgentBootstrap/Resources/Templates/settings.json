@@ -1,5 +1,16 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{POLICY_SCRIPT}}"
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
         "matcher": ".*",

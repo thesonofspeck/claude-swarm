@@ -2,12 +2,20 @@ import Foundation
 
 public enum BootstrapResources {
     public static func notifyScriptSourceURL() throws -> URL {
+        try hookScriptSourceURL(name: "notify")
+    }
+
+    public static func policyScriptSourceURL() throws -> URL {
+        try hookScriptSourceURL(name: "policy")
+    }
+
+    private static func hookScriptSourceURL(name: String) throws -> URL {
         guard let url = Bundle.module.url(
-            forResource: "notify",
+            forResource: name,
             withExtension: "sh",
             subdirectory: "Resources/Hooks"
         ) else {
-            throw InstallerError.missingResource("notify.sh")
+            throw InstallerError.missingResource("\(name).sh")
         }
         return url
     }
@@ -28,16 +36,26 @@ public enum BootstrapResources {
     /// launch when nothing changed.
     @discardableResult
     public static func materializeNotifyScript(into directory: URL) throws -> URL {
+        try materializeScript(named: "notify.sh", source: notifyScriptSourceURL, into: directory)
+    }
+
+    @discardableResult
+    public static func materializePolicyScript(into directory: URL) throws -> URL {
+        try materializeScript(named: "policy.sh", source: policyScriptSourceURL, into: directory)
+    }
+
+    private static func materializeScript(
+        named: String,
+        source: () throws -> URL,
+        into directory: URL
+    ) throws -> URL {
         let fm = FileManager.default
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
-        let dest = directory.appendingPathComponent("notify.sh")
-        let source = try notifyScriptSourceURL()
-        let bundled = try Data(contentsOf: source)
-
+        let dest = directory.appendingPathComponent(named)
+        let bundled = try Data(contentsOf: try source())
         if let existing = try? Data(contentsOf: dest), existing == bundled {
             return dest
         }
-
         try bundled.write(to: dest, options: .atomic)
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dest.path)
         return dest
