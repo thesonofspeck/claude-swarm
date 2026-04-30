@@ -1,6 +1,8 @@
 import SwiftUI
 import AppCore
 import PersistenceKit
+import DiffViewer
+import Splash
 
 struct FilesTab: View {
     @EnvironmentObject var env: AppEnvironment
@@ -9,8 +11,17 @@ struct FilesTab: View {
     @State private var entries: [FileNode] = []
     @State private var selection: FileNode.ID?
     @State private var fileContents: String = ""
+    @State private var fileExtension: String = ""
     @State private var loadingFile = false
     @State private var error: String?
+
+    private var isSwift: Bool { fileExtension == "swift" }
+
+    private func highlightedSwift(_ source: String) -> AttributedString? {
+        let highlighter = SyntaxHighlighter(format: AttributedStringOutputFormat(theme: AtomSplashTheme.current()))
+        let attr = highlighter.highlight(source)
+        return try? AttributedString(attr, including: \.appKit)
+    }
 
     var body: some View {
         HSplitView {
@@ -40,8 +51,10 @@ struct FilesTab: View {
         .onChange(of: selection) { _, newValue in
             guard let id = newValue, let node = find(id, in: entries), !node.isDirectory else {
                 fileContents = ""
+                fileExtension = ""
                 return
             }
+            fileExtension = node.url.pathExtension.lowercased()
             Task { await loadFile(node.url) }
         }
     }
@@ -66,12 +79,20 @@ struct FilesTab: View {
                 )
             } else {
                 ScrollView {
-                    Text(fileContents)
-                        .font(Type.mono)
-                        .foregroundStyle(Palette.fg)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(Metrics.Space.md)
-                        .textSelection(.enabled)
+                    if isSwift, let highlighted = highlightedSwift(fileContents) {
+                        Text(highlighted)
+                            .font(Type.mono)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(Metrics.Space.md)
+                            .textSelection(.enabled)
+                    } else {
+                        Text(fileContents)
+                            .font(Type.mono)
+                            .foregroundStyle(Palette.fg)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(Metrics.Space.md)
+                            .textSelection(.enabled)
+                    }
                 }
                 .background(Palette.bgBase)
             }

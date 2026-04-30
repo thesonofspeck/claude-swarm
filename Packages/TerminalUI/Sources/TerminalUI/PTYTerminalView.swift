@@ -18,6 +18,8 @@ public struct PTYTerminalView: NSViewRepresentable {
         view.processDelegate = context.coordinator
         context.coordinator.recorder = try? TranscriptRecorder(url: spec.transcriptURL)
 
+        applyAtomPalette(to: view)
+
         var env = ProcessInfo.processInfo.environment
         for (k, v) in spec.environment { env[k] = v }
         let envArray = env.map { "\($0)=\($1)" }
@@ -37,7 +39,17 @@ public struct PTYTerminalView: NSViewRepresentable {
         return view
     }
 
-    public func updateNSView(_ nsView: LocalProcessTerminalView, context: Context) {}
+    public func updateNSView(_ nsView: LocalProcessTerminalView, context: Context) {
+        applyAtomPalette(to: nsView)
+    }
+
+    private func applyAtomPalette(to view: LocalProcessTerminalView) {
+        view.installColors(AtomTerminalPalette.currentColors())
+        view.nativeBackgroundColor = AtomTerminalPalette.currentBackground()
+        view.nativeForegroundColor = AtomTerminalPalette.currentForeground()
+        view.caretColor = AtomTerminalPalette.currentCursor()
+        view.selectedTextBackgroundColor = AtomTerminalPalette.currentSelection()
+    }
 
     public func makeCoordinator() -> Coordinator {
         Coordinator(onExit: onExit)
