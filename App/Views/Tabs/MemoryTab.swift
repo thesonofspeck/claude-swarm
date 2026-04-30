@@ -133,13 +133,21 @@ struct MemoryTab: View {
         await MainActor.run { loading = true; error = nil }
         do {
             let namespaces = scopesToNamespaces()
-            var collected: [MemoryEntry] = []
-            for ns in namespaces {
-                if query.isEmpty {
-                    collected.append(contentsOf: try await env.memory.list(namespace: ns, limit: 100))
-                } else {
-                    collected.append(contentsOf: try await env.memory.search(query, namespace: ns, limit: 50))
+            let q = query
+            let memory = env.memory
+            let collected = try await withThrowingTaskGroup(of: [MemoryEntry].self) { group in
+                for ns in namespaces {
+                    group.addTask {
+                        if q.isEmpty {
+                            return try await memory.list(namespace: ns, limit: 100)
+                        } else {
+                            return try await memory.search(q, namespace: ns, limit: 50)
+                        }
+                    }
                 }
+                var out: [MemoryEntry] = []
+                for try await chunk in group { out.append(contentsOf: chunk) }
+                return out
             }
             await MainActor.run {
                 entries = collected.sorted { $0.updatedAt > $1.updatedAt }

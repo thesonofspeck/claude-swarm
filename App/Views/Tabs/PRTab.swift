@@ -97,26 +97,14 @@ struct PRTab: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
-                        section("CI checks") {
-                            if checks.isEmpty {
-                                Text("No checks yet").font(.caption).foregroundStyle(.secondary)
-                            } else {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    ForEach(checks) { check in
-                                        checkRow(check)
-                                    }
-                                }
+                        sectionView(title: "CI checks", isEmpty: checks.isEmpty, emptyText: "No checks yet") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(checks) { check in checkRow(check) }
                             }
                         }
-                        section("Review comments") {
-                            if comments.isEmpty {
-                                Text("No review comments").font(.caption).foregroundStyle(.secondary)
-                            } else {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    ForEach(comments) { c in
-                                        commentRow(c)
-                                    }
-                                }
+                        sectionView(title: "Review comments", isEmpty: comments.isEmpty, emptyText: "No review comments") {
+                            VStack(alignment: .leading, spacing: 12) {
+                                ForEach(comments) { c in commentRow(c) }
                             }
                         }
                     }
@@ -156,7 +144,7 @@ struct PRTab: View {
                 .foregroundStyle(checkColor(check))
             Text(check.name)
             Spacer()
-            Text(check.conclusion ?? check.state)
+            Text(check.conclusion?.rawValue ?? check.state)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if let link = check.link, let url = URL(string: link) {
@@ -186,40 +174,58 @@ struct PRTab: View {
     }
 
     @ViewBuilder
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    private func sectionView<Content: View>(
+        title: String,
+        isEmpty: Bool,
+        emptyText: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title.uppercased())
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            content()
+            if isEmpty {
+                Text(emptyText).font(.caption).foregroundStyle(.secondary)
+            } else {
+                content()
+            }
         }
     }
 
     private func prIcon(_ pr: GHPullRequest) -> String {
         if pr.merged == true { return "checkmark.seal.fill" }
-        if pr.state.lowercased() == "closed" { return "xmark.seal.fill" }
-        if pr.isDraft == true { return "pencil.tip" }
-        return "arrow.triangle.pull"
+        switch pr.state {
+        case .closed: return "xmark.seal.fill"
+        case .merged: return "checkmark.seal.fill"
+        case .open: return pr.isDraft == true ? "pencil.tip" : "arrow.triangle.pull"
+        }
     }
     private func prColor(_ pr: GHPullRequest) -> Color {
         if pr.merged == true { return .purple }
-        if pr.state.lowercased() == "closed" { return .red }
-        return .green
+        switch pr.state {
+        case .closed: return .red
+        case .merged: return .purple
+        case .open: return .green
+        }
     }
     private func checkIcon(_ c: GHCheckRun) -> String {
         switch c.conclusion {
-        case "success": return "checkmark.circle.fill"
-        case "failure", "timed_out": return "xmark.circle.fill"
-        case "neutral", "skipped", "cancelled": return "minus.circle"
-        default: return "circle.dotted"
+        case .success: return "checkmark.circle.fill"
+        case .failure, .timedOut: return "xmark.circle.fill"
+        case .neutral, .skipped, .cancelled: return "minus.circle"
+        case .actionRequired: return "exclamationmark.circle"
+        case .stale: return "clock.badge.exclamationmark"
+        case .none: return "circle.dotted"
         }
     }
     private func checkColor(_ c: GHCheckRun) -> Color {
         switch c.conclusion {
-        case "success": return .green
-        case "failure", "timed_out": return .red
-        case "neutral", "skipped", "cancelled": return .secondary
-        default: return .accentColor
+        case .success: return .green
+        case .failure, .timedOut: return .red
+        case .neutral, .skipped, .cancelled: return .secondary
+        case .actionRequired: return .orange
+        case .stale: return .yellow
+        case .none: return .accentColor
         }
     }
 

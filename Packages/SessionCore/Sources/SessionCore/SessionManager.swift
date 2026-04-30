@@ -57,8 +57,6 @@ public actor SessionManager {
         initialPrompt: String?,
         claudeExecutable: String = "/usr/local/bin/claude"
     ) async throws -> StartResult {
-        // Ensure agents and MCP config are present in the repo root before
-        // we spawn `claude` from a worktree of it.
         try bootstrap(project: project)
 
         let sessionId = UUID().uuidString
@@ -96,9 +94,6 @@ public actor SessionManager {
             "CLAUDE_SWARM_HOOK_SOCKET": AppDirectories.hooksSocket.path
         ]
 
-        // The team-lead is the entry agent. We pass the task as the initial
-        // prompt; the session's worktree contains a .claude/agents/ directory
-        // where Claude Code finds the subagents.
         let promptParts: [String] = [
             "You are running as the team-lead agent for project \"\(project.name)\".",
             taskTitle.isEmpty ? nil : "Task: \(taskTitle)",

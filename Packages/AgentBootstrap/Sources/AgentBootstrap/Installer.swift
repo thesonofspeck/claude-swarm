@@ -27,44 +27,45 @@ public struct Installer {
     ]
 
     public func install(_ plan: BootstrapPlan, overwrite: Bool = true) throws {
-        let claudeDir = plan.projectURL.appendingPathComponent(".claude", isDirectory: true)
-        let agentsDir = claudeDir.appendingPathComponent("agents", isDirectory: true)
+        let agentsDir = plan.projectURL.appendingPathComponent(".claude/agents", isDirectory: true)
         try FileManager.default.createDirectory(at: agentsDir, withIntermediateDirectories: true)
 
         for name in Self.agentNames {
-            let dest = agentsDir.appendingPathComponent("\(name).md")
+            let dest = AgentLayout.agentFile(in: plan.projectURL, name: name)
             if !overwrite, FileManager.default.fileExists(atPath: dest.path) { continue }
-            guard let url = Bundle.module.url(forResource: name, withExtension: "md", subdirectory: "Resources/Agents") else {
-                throw InstallerError.missingResource(name)
-            }
-            let data = try Data(contentsOf: url)
-            try data.write(to: dest, options: .atomic)
+            let url = try BootstrapResources.agentTemplate(name)
+            try Data(contentsOf: url).write(to: dest, options: .atomic)
         }
 
-        try writeSettings(plan: plan, into: claudeDir, overwrite: overwrite)
-        try writeMCPConfig(plan: plan, into: plan.projectURL, overwrite: overwrite)
+        try writeSettings(plan: plan, overwrite: overwrite)
+        try writeMCPConfig(plan: plan, overwrite: overwrite)
     }
 
-    private func writeSettings(plan: BootstrapPlan, into claudeDir: URL, overwrite: Bool) throws {
-        let dest = claudeDir.appendingPathComponent("settings.json")
+    private func writeSettings(plan: BootstrapPlan, overwrite: Bool) throws {
         guard let url = Bundle.module.url(forResource: "settings", withExtension: "json", subdirectory: "Resources/Templates") else {
             throw InstallerError.missingResource("settings.json")
         }
-        var template = try String(contentsOf: url, encoding: .utf8)
-        template = template.replacingOccurrences(of: "{{NOTIFY_SCRIPT}}", with: plan.notifyScriptPath)
-        try mergeOrWriteJSON(template: template, dest: dest, overwrite: overwrite)
+        let template = try String(contentsOf: url, encoding: .utf8)
+            .replacingOccurrences(of: "{{NOTIFY_SCRIPT}}", with: plan.notifyScriptPath)
+        try mergeOrWriteJSON(
+            template: template,
+            dest: AgentLayout.settingsFile(in: plan.projectURL),
+            overwrite: overwrite
+        )
     }
 
-    private func writeMCPConfig(plan: BootstrapPlan, into projectURL: URL, overwrite: Bool) throws {
-        let dest = projectURL.appendingPathComponent(".mcp.json")
+    private func writeMCPConfig(plan: BootstrapPlan, overwrite: Bool) throws {
         guard let url = Bundle.module.url(forResource: "mcp", withExtension: "json", subdirectory: "Resources/Templates") else {
             throw InstallerError.missingResource("mcp.json")
         }
-        var template = try String(contentsOf: url, encoding: .utf8)
-        template = template
+        let template = try String(contentsOf: url, encoding: .utf8)
             .replacingOccurrences(of: "{{MEMORY_BIN}}", with: plan.memoryBinaryPath)
             .replacingOccurrences(of: "{{PROJECT_ID}}", with: plan.projectId)
-        try mergeOrWriteJSON(template: template, dest: dest, overwrite: overwrite)
+        try mergeOrWriteJSON(
+            template: template,
+            dest: AgentLayout.mcpConfigFile(in: plan.projectURL),
+            overwrite: overwrite
+        )
     }
 
     private func mergeOrWriteJSON(template: String, dest: URL, overwrite: Bool) throws {

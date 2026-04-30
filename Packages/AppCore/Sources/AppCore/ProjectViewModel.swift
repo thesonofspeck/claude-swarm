@@ -12,7 +12,7 @@ public final class ProjectListViewModel: ObservableObject {
     private let projectsRepo: ProjectRepository
     private let sessionsRepo: SessionRepository
     private let manager: SessionManager
-    private var refreshTimer: Timer?
+    private var refreshTask: Task<Void, Never>?
 
     public init(
         projects: ProjectRepository,
@@ -23,23 +23,23 @@ public final class ProjectListViewModel: ObservableObject {
         self.sessionsRepo = sessions
         self.manager = manager
         reload()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.reload() }
-        }
+        startPolling()
     }
 
     deinit {
-        refreshTimer?.invalidate()
+        refreshTask?.cancel()
     }
 
     public func reload() {
         do {
-            self.projects = try projectsRepo.all()
-            var map: [String: [Session]] = [:]
-            for project in projects {
-                map[project.id] = try sessionsRepo.forProject(project.id)
+            let newProjects = try projectsRepo.all()
+            let newSessions = try sessionsRepo.allByProject()
+            if newProjects != projects {
+                projects = newProjects
             }
-            self.sessionsByProject = map
+            if newSessions != sessionsByProject {
+                sessionsByProject = newSessions
+            }
         } catch {
             self.error = "\(error)"
         }
@@ -72,5 +72,14 @@ public final class ProjectListViewModel: ObservableObject {
 
     public func sessions(for projectId: String) -> [Session] {
         sessionsByProject[projectId] ?? []
+    }
+
+    private func startPolling() {
+        refreshTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
+                self?.reload()
+            }
+        }
     }
 }

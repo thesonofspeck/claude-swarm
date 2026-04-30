@@ -1,4 +1,5 @@
 import Foundation
+import GitKit
 
 /// All GitHub interactions go through `gh`. This means we inherit `gh auth`
 /// state, host configuration, scopes, and rate limiting transparently.
@@ -149,20 +150,9 @@ public actor GitHubClient {
     }
 
     public func pushBranch(in directory: URL, branch: String) async throws {
-        // Use git directly here; gh handles auth at PR-create time, not push.
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["push", "-u", "origin", branch]
-        process.currentDirectoryURL = directory
-        let err = Pipe()
-        process.standardError = err
-        process.standardOutput = Pipe()
-        try process.run()
-        process.waitUntilExit()
-        if process.terminationStatus != 0 {
-            let stderr = (try? err.fileHandleForReading.readToEnd()).flatMap { String(data: $0, encoding: .utf8) } ?? ""
-            throw GhError.nonZeroExit(code: process.terminationStatus, stderr: stderr)
-        }
+        // Pushing inherits the user's git credential helper; gh's auth only
+        // applies at PR-create time.
+        _ = try await GitRunner().run(["push", "-u", "origin", branch], in: directory)
     }
 
     public func openInBrowser(url: String) async throws {
@@ -171,27 +161,31 @@ public actor GitHubClient {
 
     // MARK: - Reviews & checks
 
-    public func reviewComments(owner: String, repo: String, number: Int) async throws -> [GHReviewComment] {
+    public func reviewComments(
+        owner: String, repo: String, number: Int,
+        maxPages: Int = 5, perPage: Int = 100
+    ) async throws -> [GHReviewComment] {
         struct Comment: Decodable {
             let id: Int64
             let body: String
             let path: String?
             let user: GHUser?
             let html_url: String
-            let created_at: String?
+            let created_at: Date?
         }
         let comments: [Comment] = try await runner.runJSON([
             "api", "repos/\(owner)/\(repo)/pulls/\(number)/comments",
-            "--paginate"
+            "--paginate",
+            "-F", "per_page=\(perPage)"
         ])
-        let formatter = ISO8601DateFormatter()
-        return comments.map {
+        let bounded = comments.prefix(maxPages * perPage)
+        return bounded.map {
             GHReviewComment(
                 id: $0.id,
                 body: $0.body,
                 path: $0.path,
                 user: $0.user,
-                createdAt: $0.created_at.flatMap(formatter.date(from:)),
+                createdAt: $0.created_at,
                 url: $0.html_url
             )
         }

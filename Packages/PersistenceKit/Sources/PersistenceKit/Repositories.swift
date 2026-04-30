@@ -57,6 +57,13 @@ public struct SessionRepository {
         }
     }
 
+    public func allByProject() throws -> [String: [Session]] {
+        try db.queue.read { conn in
+            let all = try Session.order(Column("createdAt").desc).fetchAll(conn)
+            return Dictionary(grouping: all, by: \.projectId)
+        }
+    }
+
     public func find(id: String) throws -> Session? {
         try db.queue.read { conn in try Session.fetchOne(conn, key: id) }
     }

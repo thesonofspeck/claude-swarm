@@ -97,8 +97,10 @@ struct AgentsTab: View {
     }
 
     private func agentURL(in project: Project) -> URL {
-        URL(fileURLWithPath: project.localPath)
-            .appendingPathComponent(".claude/agents/\(selectedAgent).md")
+        AgentLayout.agentFile(
+            in: URL(fileURLWithPath: project.localPath),
+            name: selectedAgent
+        )
     }
 
     private func fileExists(in project: Project) -> Bool {

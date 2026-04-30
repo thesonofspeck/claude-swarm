@@ -2,7 +2,7 @@ import XCTest
 @testable import GitHubKit
 
 final class GitHubClientTests: XCTestCase {
-    func testPRDecode() throws {
+    func testPRDecodesUppercaseState() throws {
         let json = """
         {
             "number": 42,
@@ -19,21 +19,24 @@ final class GitHubClientTests: XCTestCase {
         """
         let pr = try JSONDecoder().decode(GHPullRequest.self, from: Data(json.utf8))
         XCTAssertEqual(pr.number, 42)
+        XCTAssertEqual(pr.state, .open)
         XCTAssertEqual(pr.headRefName, "feat/wk-1-login")
         XCTAssertEqual(pr.author?.login, "ada")
     }
 
-    func testCheckRunDecode() throws {
+    func testCheckRunDecodesConclusionEnum() throws {
         let json = """
         [
             {"name":"build","state":"completed","conclusion":"success","link":"https://x/1","bucket":"pass"},
-            {"name":"test","state":"in_progress","conclusion":null,"link":"https://x/2","bucket":"running"}
+            {"name":"test","state":"in_progress","conclusion":null,"link":"https://x/2","bucket":"running"},
+            {"name":"timeout","state":"completed","conclusion":"timed_out","link":"https://x/3","bucket":"fail"}
         ]
         """
         let runs = try JSONDecoder().decode([GHCheckRun].self, from: Data(json.utf8))
-        XCTAssertEqual(runs.count, 2)
-        XCTAssertEqual(runs[0].conclusion, "success")
+        XCTAssertEqual(runs.count, 3)
+        XCTAssertEqual(runs[0].conclusion, .success)
         XCTAssertNil(runs[1].conclusion)
+        XCTAssertEqual(runs[2].conclusion, .timedOut)
     }
 
     func testReposDecode() throws {

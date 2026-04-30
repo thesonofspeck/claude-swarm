@@ -66,7 +66,7 @@ public final class AppEnvironment: ObservableObject {
             manager: manager
         )
 
-        self.settingsURL = AppDirectories.supportRoot.appendingPathComponent("settings.json")
+        self.settingsURL = AppDirectories.settingsURL
         self.settings = AppSettings.load(from: settingsURL) ?? AppSettings()
 
         let registryRef = self.registry
@@ -74,22 +74,17 @@ public final class AppEnvironment: ObservableObject {
         let server = HookSocketServer(socketURL: AppDirectories.hooksSocket) { [weak notifier] event in
             Task { @MainActor in
                 guard let id = event.sessionId else { return }
-                let isForeground = (registryRef.foregroundSessionId == id)
-                switch event.kind {
-                case .notification:
+                if let status = event.resultingStatus {
+                    try? repoRef.setStatus(id: id, status)
+                }
+                if event.kind == .notification {
+                    let isForeground = (registryRef.foregroundSessionId == id)
                     notifier?.sessionNeedsInput(
                         sessionId: id,
                         title: "Session needs input",
                         body: event.message ?? "",
                         isForeground: isForeground
                     )
-                    try? repoRef.setStatus(id: id, .waitingForInput)
-                case .stop:
-                    try? repoRef.setStatus(id: id, .idle)
-                case .sessionStart:
-                    try? repoRef.setStatus(id: id, .running)
-                case .other:
-                    break
                 }
             }
         }

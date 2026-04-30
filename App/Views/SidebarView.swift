@@ -117,7 +117,6 @@ struct AddProjectSheet: View {
             }
         }
         .formStyle(.grouped)
-        .padding()
         .frame(width: 480, height: 360)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {

@@ -29,6 +29,10 @@ public enum AppDirectories {
         supportRoot.appendingPathComponent("hooks.sock")
     }
 
+    public static var settingsURL: URL {
+        supportRoot.appendingPathComponent("settings.json")
+    }
+
     public static var binDir: URL {
         supportRoot.appendingPathComponent("bin", isDirectory: true)
     }

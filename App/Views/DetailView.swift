@@ -42,11 +42,7 @@ struct DetailView: View {
     @EnvironmentObject var registry: RunningSessionRegistry
     let session: Session?
     @State private var tab: DetailTab = .terminal
-
-    var project: Project? {
-        guard let session else { return nil }
-        return try? env.projects.find(id: session.projectId)
-    }
+    @State private var project: Project?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -58,6 +54,9 @@ struct DetailView: View {
         }
         .onChange(of: session?.id) { _, newId in
             registry.setForeground(newId)
+        }
+        .task(id: session?.projectId) {
+            project = session.flatMap { try? env.projects.find(id: $0.projectId) }
         }
     }
 

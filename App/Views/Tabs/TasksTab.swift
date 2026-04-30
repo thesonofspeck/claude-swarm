@@ -77,7 +77,7 @@ struct TasksTab: View {
             List(tasks) { task in
                 TaskRow(task: task) {
                     pendingTask = task
-                    initialPrompt = task.descriptionText?.htmlStripped ?? ""
+                    initialPrompt = task.descriptionPlainText
                 }
             }
             .sheet(item: $pendingTask) { task in
@@ -146,8 +146,9 @@ private struct TaskRow: View {
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
                 Text(task.title).font(.callout.weight(.medium))
-                if let desc = task.descriptionText, !desc.isEmpty {
-                    Text(desc.htmlStripped)
+                let desc = task.descriptionPlainText
+                if !desc.isEmpty {
+                    Text(desc)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -168,14 +169,6 @@ private struct TaskRow: View {
                 .controlSize(.small)
         }
         .padding(.vertical, 4)
-    }
-}
-
-extension String {
-    var htmlStripped: String {
-        replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-            .replacingOccurrences(of: "&nbsp;", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

@@ -20,6 +20,19 @@ public struct WrikeTask: Codable, Identifiable, Equatable, Sendable {
         case id, title, status, permalink, importance, updatedDate
         case descriptionText = "description"
     }
+
+    public var descriptionPlainText: String {
+        WrikeText.strip(descriptionText ?? "")
+    }
+}
+
+public enum WrikeText {
+    public static func strip(_ html: String) -> String {
+        html
+            .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 public struct WrikeCustomStatus: Codable, Identifiable, Equatable, Sendable {

@@ -20,7 +20,8 @@ public final class Notifier: ObservableObject {
     }
 
     public func sessionNeedsInput(sessionId: String, title: String, body: String, isForeground: Bool) {
-        pendingSessionIds.insert(sessionId)
+        let (inserted, _) = pendingSessionIds.insert(sessionId)
+        guard inserted else { return }
         updateDockBadge()
         guard !isForeground else { return }
 
@@ -40,7 +41,7 @@ public final class Notifier: ObservableObject {
     }
 
     public func clear(sessionId: String) {
-        pendingSessionIds.remove(sessionId)
+        guard pendingSessionIds.remove(sessionId) != nil else { return }
         updateDockBadge()
         #if canImport(UserNotifications)
         UNUserNotificationCenter.current()

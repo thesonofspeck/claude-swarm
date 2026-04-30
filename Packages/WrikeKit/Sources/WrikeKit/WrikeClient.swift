@@ -48,29 +48,35 @@ public actor WrikeClient {
     // MARK: - Endpoints
 
     public func tasks(in folderId: String) async throws -> [WrikeTask] {
-        try await getList("folders/\(folderId)/tasks?fields=%5Bdescription%5D")
+        try await getList(path: "folders/\(folderId)/tasks", query: ["fields": "[description]"])
     }
 
     public func task(id: String) async throws -> WrikeTask? {
-        try await getList("tasks/\(id)?fields=%5Bdescription%5D").first
+        try await getList(path: "tasks/\(id)", query: ["fields": "[description]"]).first
     }
 
     public func folders() async throws -> [WrikeFolder] {
-        try await getList("folders")
+        try await getList(path: "folders")
     }
 
     public func customStatuses() async throws -> [WrikeCustomStatus] {
-        try await getList("customstatuses")
+        try await getList(path: "customstatuses")
     }
 
     // MARK: - HTTP plumbing
 
-    private func getList<T: Decodable>(_ path: String) async throws -> [T] {
+    private func getList<T: Decodable>(path: String, query: [String: String] = [:]) async throws -> [T] {
         let token: String
         do { token = try keychain.get(account: KeychainAccount.wrike) }
         catch { throw WrikeError.missingToken }
 
-        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
+        guard var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
+            throw WrikeError.http(status: -1, body: "invalid url for path \(path)")
+        }
+        if !query.isEmpty {
+            components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
+        guard let url = components.url else {
             throw WrikeError.http(status: -1, body: "invalid url for path \(path)")
         }
         var req = URLRequest(url: url)

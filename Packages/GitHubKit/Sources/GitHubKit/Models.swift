@@ -4,11 +4,37 @@ public struct GHUser: Codable, Equatable, Sendable {
     public let login: String
 }
 
+public enum GHPRState: String, Codable, Equatable, Sendable {
+    case open, closed, merged
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self).lowercased()
+        guard let state = GHPRState(rawValue: raw) else {
+            throw DecodingError.dataCorruptedError(
+                in: try decoder.singleValueContainer(),
+                debugDescription: "Unknown PR state: \(raw)"
+            )
+        }
+        self = state
+    }
+}
+
+public enum GHCheckConclusion: String, Codable, Equatable, Sendable {
+    case success
+    case failure
+    case neutral
+    case cancelled
+    case skipped
+    case timedOut = "timed_out"
+    case actionRequired = "action_required"
+    case stale
+}
+
 public struct GHPullRequest: Codable, Equatable, Identifiable, Sendable {
     public let number: Int
     public let title: String
     public let body: String?
-    public let state: String
+    public let state: GHPRState
     public let url: String
     public let isDraft: Bool?
     public let merged: Bool?
@@ -18,12 +44,6 @@ public struct GHPullRequest: Codable, Equatable, Identifiable, Sendable {
     public let author: GHUser?
 
     public var id: Int { number }
-
-    enum CodingKeys: String, CodingKey {
-        case number, title, body, state, url
-        case isDraft, merged
-        case headRefName, baseRefName, headRefOid, author
-    }
 }
 
 public struct GHReviewComment: Codable, Equatable, Identifiable, Sendable {
@@ -42,8 +62,8 @@ public struct GHReviewComment: Codable, Equatable, Identifiable, Sendable {
 
 public struct GHCheckRun: Codable, Equatable, Identifiable, Sendable {
     public let name: String
-    public let state: String          // queued, in_progress, completed
-    public let conclusion: String?    // success, failure, neutral, cancelled, skipped, timed_out, action_required
+    public let state: String
+    public let conclusion: GHCheckConclusion?
     public let link: String?
     public let bucket: String?
 

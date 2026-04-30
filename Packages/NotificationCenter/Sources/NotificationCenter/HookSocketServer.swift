@@ -70,6 +70,11 @@ public final class HookSocketServer {
         try? FileManager.default.removeItem(at: socketURL)
     }
 
+    deinit {
+        listenTask?.cancel()
+        if socketFD >= 0 { close(socketFD) }
+    }
+
     private static func serveOne(clientFD: Int32, handler: @escaping Handler) {
         defer { close(clientFD) }
         var buffer = Data()

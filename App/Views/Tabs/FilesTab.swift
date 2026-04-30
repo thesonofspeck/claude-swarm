@@ -73,7 +73,7 @@ struct FilesTab: View {
 
     private func loadTree() async {
         let root = URL(fileURLWithPath: session.worktreePath)
-        let nodes = (try? FileNode.tree(at: root, depth: 6)) ?? []
+        let nodes = await Task.detached { try? FileNode.tree(at: root, depth: 6) }.value ?? []
         await MainActor.run { entries = nodes }
     }
 
