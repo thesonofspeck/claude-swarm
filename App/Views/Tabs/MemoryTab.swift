@@ -24,14 +24,23 @@ struct MemoryTab: View {
     var body: some View {
         VStack(spacing: 0) {
             controls
-            Divider()
+            Divider().background(Palette.divider)
             if let error {
-                ContentUnavailableView(
-                    "Memory error", systemImage: "exclamationmark.triangle",
-                    description: Text(error)
+                EmptyState(
+                    title: "Memory error",
+                    systemImage: "exclamationmark.triangle",
+                    description: error,
+                    tint: Palette.red
                 )
             } else if loading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if entries.isEmpty {
+                EmptyState(
+                    title: "No memory yet",
+                    systemImage: "brain",
+                    description: "Agents persist key decisions here. Run a session and check back.",
+                    tint: Palette.purple
+                )
             } else {
                 HSplitView {
                     list
@@ -39,6 +48,7 @@ struct MemoryTab: View {
                 }
             }
         }
+        .background(Palette.bgBase)
         .task(id: refreshKey) { await load() }
     }
 
@@ -47,10 +57,24 @@ struct MemoryTab: View {
     }
 
     private var controls: some View {
-        HStack(spacing: 8) {
-            TextField("Search memory…", text: $query)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { Task { await load() } }
+        HStack(spacing: Metrics.Space.sm) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(Palette.fgMuted)
+                TextField("Search memory…", text: $query)
+                    .textFieldStyle(.plain)
+                    .onSubmit { Task { await load() } }
+            }
+            .padding(.horizontal, Metrics.Space.sm)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: Metrics.Radius.md)
+                    .fill(Palette.bgRaised)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Metrics.Radius.md)
+                    .stroke(Palette.divider, lineWidth: Metrics.Stroke.hairline)
+            )
             Picker("Scope", selection: $scope) {
                 ForEach(Scope.allCases) { s in
                     Text(s.label).tag(s)
@@ -58,71 +82,84 @@ struct MemoryTab: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 280)
-            Button {
+            IconButton(systemImage: "arrow.clockwise", help: "Refresh") {
                 Task { await load() }
-            } label: { Image(systemName: "arrow.clockwise") }
-                .buttonStyle(.borderless)
+            }
         }
-        .padding(12)
+        .padding(Metrics.Space.md)
+        .background(Palette.bgSidebar)
     }
 
     private var list: some View {
         List(selection: $selection) {
             ForEach(entries) { entry in
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text(entry.namespace).font(.caption).foregroundStyle(.secondary)
+                        Pill(text: entry.namespace, tint: namespaceTint(entry.namespace))
                         Spacer()
                         Text(entry.updatedAt.formatted(.relative(presentation: .named)))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .font(Type.caption)
+                            .foregroundStyle(Palette.fgMuted)
                     }
                     Text(entry.key ?? entry.content.prefix(80).description)
+                        .font(Type.body)
+                        .foregroundStyle(Palette.fg)
                         .lineLimit(2)
                 }
+                .padding(.vertical, 2)
                 .tag(entry.id)
             }
             .onDelete { indices in
                 Task { await delete(indices) }
             }
         }
-        .frame(minWidth: 320)
+        .scrollContentBackground(.hidden)
+        .background(Palette.bgBase)
+        .frame(minWidth: 340)
+    }
+
+    private func namespaceTint(_ ns: String) -> Color {
+        if ns == "global" { return Palette.cyan }
+        if ns.hasPrefix("session:") { return Palette.purple }
+        return Palette.green
     }
 
     private var detail: some View {
         Group {
             if let id = selection, let entry = entries.first(where: { $0.id == id }) {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: Metrics.Space.md) {
                         if let key = entry.key {
-                            Text(key).font(.headline)
+                            Text(key)
+                                .font(Type.heading)
+                                .foregroundStyle(Palette.fgBright)
                         }
-                        Text("Namespace: \(entry.namespace)")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Text(entry.content)
-                            .textSelection(.enabled)
-                            .font(.system(.body, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Pill(text: entry.namespace, systemImage: "tray", tint: namespaceTint(entry.namespace))
+                        Card {
+                            Text(entry.content)
+                                .textSelection(.enabled)
+                                .font(Type.mono)
+                                .foregroundStyle(Palette.fg)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         if !entry.tagsArray.isEmpty {
-                            HStack {
+                            HStack(spacing: 6) {
                                 ForEach(entry.tagsArray, id: \.self) { tag in
-                                    Text(tag)
-                                        .font(.caption2)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(.regularMaterial, in: Capsule())
+                                    Pill(text: tag, tint: Palette.fgMuted)
                                 }
                             }
                         }
                         Spacer()
                     }
-                    .padding(16)
+                    .padding(Metrics.Space.lg)
                 }
+                .background(Palette.bgBase)
             } else {
-                ContentUnavailableView(
-                    "No entry selected",
+                EmptyState(
+                    title: "No entry selected",
                     systemImage: "brain",
-                    description: Text("Select an entry to view its content.")
+                    description: "Select an entry on the left to view its content.",
+                    tint: Palette.purple
                 )
             }
         }

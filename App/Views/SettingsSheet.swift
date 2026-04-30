@@ -25,7 +25,7 @@ struct SettingsSheet: View {
                 .tabItem { Label("GitHub", systemImage: "arrow.triangle.pull") }
         }
         .padding()
-        .frame(width: 540, height: 420)
+        .frame(width: 560, height: 440)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Done") {
@@ -46,7 +46,6 @@ struct SettingsSheet: View {
                         let panel = NSOpenPanel()
                         panel.canChooseFiles = true
                         panel.canChooseDirectories = false
-                        panel.allowedContentTypes = []
                         if panel.runModal() == .OK, let url = panel.url {
                             claudePath = url.path
                         }
@@ -57,7 +56,7 @@ struct SettingsSheet: View {
                 TextField("Default base branch", text: $defaultBranch)
             }
             if let error {
-                Section { Text(error).foregroundStyle(.red) }
+                Section { Text(error).foregroundStyle(Palette.red) }
             }
         }
         .formStyle(.grouped)
@@ -67,9 +66,9 @@ struct SettingsSheet: View {
         Form {
             Section("Personal Access Token") {
                 if wrikeStored {
-                    HStack {
-                        Image(systemName: "checkmark.shield.fill").foregroundStyle(.green)
-                        Text("Token stored in Keychain")
+                    HStack(spacing: Metrics.Space.sm) {
+                        Image(systemName: "checkmark.shield.fill").foregroundStyle(Palette.green)
+                        Text("Token stored in Keychain").foregroundStyle(Palette.fg)
                         Spacer()
                         Button("Replace") { wrikeStored = false; wrikeToken = "" }
                         Button("Remove", role: .destructive) {
@@ -88,11 +87,13 @@ struct SettingsSheet: View {
                             self.error = "\(error)"
                         }
                     }
+                    .buttonStyle(.borderedProminent)
                     .disabled(wrikeToken.isEmpty)
                 }
             }
             Section("Help") {
                 Link("Generate a Wrike PAT", destination: URL(string: "https://help.wrike.com/hc/en-us/articles/210409445")!)
+                    .foregroundStyle(Palette.blue)
             }
         }
         .formStyle(.grouped)
@@ -101,22 +102,23 @@ struct SettingsSheet: View {
     private var githubTab: some View {
         Form {
             Section("gh CLI") {
-                HStack {
+                HStack(spacing: Metrics.Space.sm) {
                     Image(systemName: ghAuthenticated ? "checkmark.shield.fill" : "exclamationmark.shield")
-                        .foregroundStyle(ghAuthenticated ? .green : .orange)
+                        .foregroundStyle(ghAuthenticated ? Palette.green : Palette.orange)
                     Text(ghAuthenticated ? "Authenticated" : "Not authenticated")
+                        .foregroundStyle(Palette.fg)
                     Spacer()
                     Button("Recheck") { Task { await refresh() } }
                 }
                 Text(ghAuthLine)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Type.caption)
+                    .foregroundStyle(Palette.fgMuted)
                     .lineLimit(4)
             }
             Section("Help") {
                 Text("This app uses the GitHub CLI for all GitHub operations. To authenticate, run `gh auth login` in a terminal — the app picks up your existing session.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Type.caption)
+                    .foregroundStyle(Palette.fgMuted)
             }
         }
         .formStyle(.grouped)

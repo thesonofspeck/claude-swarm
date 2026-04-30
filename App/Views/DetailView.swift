@@ -68,8 +68,13 @@ struct DetailView: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
-        .padding(8)
-        .background(.ultraThinMaterial)
+        .padding(Metrics.Space.sm)
+        .background(Palette.bgSidebar)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Palette.divider)
+                .frame(height: Metrics.Stroke.hairline)
+        }
     }
 
     @ViewBuilder
@@ -86,10 +91,11 @@ struct DetailView: View {
             case .agents: AgentsTab(project: project)
             }
         } else {
-            ContentUnavailableView(
-                "No session selected",
-                systemImage: "rectangle.dashed",
-                description: Text("Pick a session from the sidebar or start a new one from the Tasks tab.")
+            EmptyState(
+                title: "No session selected",
+                systemImage: "sparkles.rectangle.stack",
+                description: "Pick a session from the sidebar or start a new one from the Tasks tab.",
+                tint: Palette.blue
             )
         }
     }
@@ -110,14 +116,16 @@ struct TerminalTab: View {
                     }
                 }
             } else {
-                ContentUnavailableView(
-                    "Session not running",
+                EmptyState(
+                    title: "Session not running",
                     systemImage: "powerplug",
-                    description: Text("This session was started in a previous app launch. Start a new session from the Tasks tab.")
+                    description: "This session was started in a previous app launch. Start a new session from the Tasks tab.",
+                    tint: Palette.fgMuted
                 )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Palette.bgBase)
     }
 }
 
@@ -155,19 +163,26 @@ struct HistoryTab: View {
         HSplitView {
             List(commits, selection: $selection) { c in
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(c.subject).font(.callout)
-                    HStack {
+                    Text(c.subject)
+                        .font(Type.body)
+                        .foregroundStyle(Palette.fg)
+                    HStack(spacing: Metrics.Space.sm) {
                         Text(c.id.prefix(7))
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                        Text(c.author).font(.caption).foregroundStyle(.secondary)
+                            .font(Type.monoCaption)
+                            .foregroundStyle(Palette.purple)
+                        Text(c.author)
+                            .font(Type.caption)
+                            .foregroundStyle(Palette.fgMuted)
                         Text(c.date.formatted(.relative(presentation: .named)))
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(Type.caption)
+                            .foregroundStyle(Palette.fgMuted)
                     }
                 }
                 .tag(Optional(c.id))
             }
             .frame(minWidth: 320)
+            .scrollContentBackground(.hidden)
+            .background(Palette.bgBase)
             .task(id: session.id) {
                 let url = URL(fileURLWithPath: session.worktreePath)
                 commits = (try? await env.history.log(in: url)) ?? []

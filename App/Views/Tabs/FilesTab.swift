@@ -24,14 +24,19 @@ struct FilesTab: View {
     private var tree: some View {
         List(entries, children: \.children, selection: $selection) { node in
             HStack(spacing: 6) {
-                Image(systemName: node.isDirectory ? "folder" : "doc.text")
-                    .foregroundStyle(.secondary)
+                Image(systemName: node.isDirectory ? "folder.fill" : "doc.text")
+                    .foregroundStyle(node.isDirectory ? Palette.blue : Palette.fgMuted)
+                    .imageScale(.small)
                 Text(node.name)
+                    .font(Type.body)
+                    .foregroundStyle(Palette.fg)
                     .lineLimit(1)
             }
             .tag(Optional(node.id))
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .background(Palette.bgSidebar)
         .onChange(of: selection) { _, newValue in
             guard let id = newValue, let node = find(id, in: entries), !node.isDirectory else {
                 fileContents = ""
@@ -44,28 +49,31 @@ struct FilesTab: View {
     private var preview: some View {
         Group {
             if let error {
-                ContentUnavailableView(
-                    "Couldn't read file",
+                EmptyState(
+                    title: "Couldn't read file",
                     systemImage: "exclamationmark.triangle",
-                    description: Text(error)
+                    description: error,
+                    tint: Palette.orange
                 )
             } else if loadingFile {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if fileContents.isEmpty {
-                ContentUnavailableView(
-                    "No file selected",
+                EmptyState(
+                    title: "No file selected",
                     systemImage: "doc.text",
-                    description: Text("Pick a file from the tree to preview it.")
+                    description: "Pick a file from the tree to preview it.",
+                    tint: Palette.blue
                 )
             } else {
                 ScrollView {
                     Text(fileContents)
-                        .font(.system(.body, design: .monospaced))
+                        .font(Type.mono)
+                        .foregroundStyle(Palette.fg)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
+                        .padding(Metrics.Space.md)
                         .textSelection(.enabled)
                 }
-                .background(Color(NSColor.textBackgroundColor))
+                .background(Palette.bgBase)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

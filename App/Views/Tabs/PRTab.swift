@@ -30,52 +30,67 @@ struct PRTab: View {
 
     @ViewBuilder
     private var createView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("No pull request yet").font(.headline)
+        VStack(alignment: .leading, spacing: Metrics.Space.lg) {
+            HStack(spacing: Metrics.Space.sm) {
+                Image(systemName: "arrow.triangle.pull")
+                    .foregroundStyle(Palette.blue)
+                    .imageScale(.large)
+                Text("New pull request")
+                    .font(Type.title)
+                    .foregroundStyle(Palette.fgBright)
                 Spacer()
-                Button {
+                IconButton(systemImage: "arrow.clockwise", help: "Refresh") {
                     Task { await load() }
-                } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless)
+                }
             }
-            Text("Branch: \(session.branch)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack(spacing: Metrics.Space.sm) {
+                Pill(text: session.branch, systemImage: "arrow.branch", tint: Palette.purple)
+                Image(systemName: "arrow.right")
+                    .foregroundStyle(Palette.fgMuted)
+                    .imageScale(.small)
+                Pill(text: project?.defaultBaseBranch ?? "main", systemImage: "arrow.branch", tint: Palette.fgMuted)
+            }
 
             if let error {
                 Label(error, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Palette.orange)
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Title").font(.caption).foregroundStyle(.secondary)
+                SectionLabel(title: "Title")
                 TextField("PR title", text: $prTitle)
                     .textFieldStyle(.roundedBorder)
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("Description").font(.caption).foregroundStyle(.secondary)
+                SectionLabel(title: "Description")
                 TextEditor(text: $prBody)
-                    .font(.system(.body, design: .monospaced))
-                    .frame(minHeight: 200)
+                    .font(Type.mono)
+                    .scrollContentBackground(.hidden)
+                    .padding(Metrics.Space.sm)
+                    .background(Palette.bgBase)
+                    .frame(minHeight: 220)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.secondary.opacity(0.3))
+                        RoundedRectangle(cornerRadius: Metrics.Radius.md)
+                            .stroke(Palette.divider, lineWidth: Metrics.Stroke.regular)
                     )
             }
             HStack {
                 Spacer()
-                Button("Push & Create PR") {
+                Button {
                     Task { await create() }
+                } label: {
+                    Label(creating ? "Pushing…" : "Push & Create PR", systemImage: "arrow.up.circle.fill")
                 }
+                .controlSize(.large)
                 .keyboardShortcut("p", modifiers: [.command, .shift])
                 .buttonStyle(.borderedProminent)
                 .disabled(creating || prTitle.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
-        .padding(20)
+        .padding(Metrics.Space.xl)
         .frame(maxWidth: 760, alignment: .leading)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Palette.bgBase)
         .onAppear {
             if prTitle.isEmpty {
                 prTitle = session.taskTitle ?? session.branch
@@ -115,62 +130,94 @@ struct PRTab: View {
     }
 
     private func header(_ pr: GHPullRequest) -> some View {
-        HStack(alignment: .top) {
+        HStack(alignment: .top, spacing: Metrics.Space.md) {
+            ZStack {
+                Circle()
+                    .fill(prColor(pr).opacity(0.12))
+                    .frame(width: 38, height: 38)
+                Image(systemName: prIcon(pr))
+                    .foregroundStyle(prColor(pr))
+                    .imageScale(.large)
+            }
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Image(systemName: prIcon(pr))
-                        .foregroundStyle(prColor(pr))
-                    Text("#\(pr.number) — \(pr.title)").font(.headline)
+                Text("#\(pr.number) — \(pr.title)")
+                    .font(Type.heading)
+                    .foregroundStyle(Palette.fgBright)
+                HStack(spacing: 6) {
+                    Pill(text: pr.headRefName ?? session.branch, systemImage: "arrow.branch", tint: Palette.purple)
+                    Image(systemName: "arrow.right")
+                        .foregroundStyle(Palette.fgMuted)
+                        .imageScale(.small)
+                    Pill(text: pr.baseRefName ?? "main", systemImage: "arrow.branch", tint: Palette.fgMuted)
                 }
-                Text("\(pr.headRefName ?? session.branch) → \(pr.baseRefName ?? "main")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
             Spacer()
             Button("Open in browser") {
                 if let url = URL(string: pr.url) { NSWorkspace.shared.open(url) }
             }
-            Button {
+            IconButton(systemImage: "arrow.clockwise", help: "Refresh") {
                 Task { await load() }
-            } label: { Image(systemName: "arrow.clockwise") }
-                .buttonStyle(.borderless)
+            }
         }
-        .padding(16)
+        .padding(Metrics.Space.lg)
+        .background(Palette.bgSidebar)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Palette.divider).frame(height: Metrics.Stroke.hairline)
+        }
     }
 
     private func checkRow(_ check: GHCheckRun) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Metrics.Space.sm) {
             Image(systemName: checkIcon(check))
                 .foregroundStyle(checkColor(check))
             Text(check.name)
+                .font(Type.body)
+                .foregroundStyle(Palette.fg)
             Spacer()
-            Text(check.conclusion?.rawValue ?? check.state)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Pill(
+                text: check.conclusion?.rawValue ?? check.state,
+                tint: checkColor(check)
+            )
             if let link = check.link, let url = URL(string: link) {
-                Link("Logs", destination: url).font(.caption)
+                Link(destination: url) {
+                    Pill(text: "Logs", systemImage: "arrow.up.right.square", tint: Palette.fgMuted)
+                }
             }
         }
+        .padding(.horizontal, Metrics.Space.sm)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: Metrics.Radius.md).fill(Palette.bgRaised)
+        )
     }
 
     private func commentRow(_ c: GHReviewComment) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(c.user?.login ?? "?").font(.caption.weight(.semibold))
-                if let path = c.path {
-                    Text(path).font(.caption2).foregroundStyle(.secondary)
+        Card {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: Metrics.Space.sm) {
+                    Text(c.user?.login ?? "?")
+                        .font(Type.caption.weight(.semibold))
+                        .foregroundStyle(Palette.blue)
+                    if let path = c.path {
+                        Text(path)
+                            .font(Type.monoCaption)
+                            .foregroundStyle(Palette.fgMuted)
+                    }
+                    Spacer()
+                    if let url = c.url, let u = URL(string: url) {
+                        Link(destination: u) {
+                            Image(systemName: "arrow.up.right.square")
+                                .imageScale(.small)
+                                .foregroundStyle(Palette.fgMuted)
+                        }
+                    }
                 }
-                Spacer()
-                if let url = c.url, let u = URL(string: url) {
-                    Link("Open", destination: u).font(.caption2)
-                }
+                Text(c.body)
+                    .font(Type.body)
+                    .foregroundStyle(Palette.fg)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Text(c.body)
-                .font(.body)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(10)
-        .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 
     @ViewBuilder

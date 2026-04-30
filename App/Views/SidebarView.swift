@@ -18,26 +18,16 @@ struct SidebarView: View {
                     let sessions = projectList.sessions(for: project.id)
                     if sessions.isEmpty {
                         Text("No sessions yet")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.vertical, 4)
+                            .font(Type.caption)
+                            .foregroundStyle(Palette.fgMuted)
+                            .padding(.vertical, Metrics.Space.xs)
                     } else {
                         ForEach(sessions) { session in
                             sessionRow(session).tag(session)
                         }
                     }
                 } header: {
-                    HStack {
-                        Text(project.name)
-                        Spacer()
-                        let needsInputCount = projectList.sessions(for: project.id)
-                            .filter { notifier.pendingSessionIds.contains($0.id) }.count
-                        if needsInputCount > 0 {
-                            Text("\(needsInputCount)●")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.yellow)
-                        }
-                    }
+                    projectHeader(project)
                 }
             }
 
@@ -45,11 +35,14 @@ struct SidebarView: View {
                 showingAddProject = true
             } label: {
                 Label("Add project", systemImage: "folder.badge.plus")
+                    .foregroundStyle(Palette.blue)
             }
             .buttonStyle(.plain)
-            .padding(.top, 8)
+            .padding(.top, Metrics.Space.sm)
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .background(Palette.bgSidebar)
         .sheet(isPresented: $showingAddProject) {
             AddProjectSheet().environmentObject(env)
         }
@@ -58,33 +51,116 @@ struct SidebarView: View {
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
-                Button { showingSettings = true } label: {
-                    Image(systemName: "gearshape")
+                IconButton(systemImage: "gearshape", help: "Settings") {
+                    showingSettings = true
                 }
-                .help("Settings")
             }
         }
+    }
+
+    private func projectHeader(_ project: Project) -> some View {
+        let pendingCount = projectList.sessions(for: project.id)
+            .filter { notifier.pendingSessionIds.contains($0.id) }.count
+        return HStack(spacing: Metrics.Space.sm) {
+            ProjectInitial(name: project.name)
+            Text(project.name)
+                .font(Type.heading)
+                .foregroundStyle(Palette.fgBright)
+            Spacer()
+            if pendingCount > 0 {
+                Pill(text: "\(pendingCount)", systemImage: "circle.fill", tint: Palette.yellow)
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     @ViewBuilder
     private func sessionRow(_ session: Session) -> some View {
         let needsInput = notifier.pendingSessionIds.contains(session.id)
-        HStack(spacing: 8) {
-            Circle()
-                .fill(needsInput ? Color.yellow : Color.clear)
-                .frame(width: 8, height: 8)
+        HStack(spacing: Metrics.Space.sm) {
+            if needsInput {
+                PulseDot(color: Palette.yellow)
+            } else {
+                Image(systemName: statusIcon(session.status))
+                    .imageScale(.small)
+                    .foregroundStyle(statusColor(session.status))
+                    .frame(width: 8)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.taskTitle ?? session.branch)
+                    .font(Type.body)
+                    .foregroundStyle(Palette.fg)
                     .lineLimit(1)
                 Text(session.branch)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(Type.monoCaption)
+                    .foregroundStyle(Palette.fgMuted)
                     .lineLimit(1)
             }
         }
+        .padding(.vertical, 2)
         .accessibilityLabel(needsInput
             ? "\(session.taskTitle ?? session.branch). Needs input."
             : (session.taskTitle ?? session.branch))
+    }
+
+    private func statusIcon(_ status: SessionStatus) -> String {
+        switch status {
+        case .starting, .running: return "circle.dotted"
+        case .waitingForInput: return "circle.fill"
+        case .idle: return "pause.circle"
+        case .finished, .archived: return "checkmark.circle"
+        case .prOpen: return "arrow.triangle.pull"
+        case .merged: return "checkmark.seal.fill"
+        case .failed: return "exclamationmark.triangle"
+        }
+    }
+
+    private func statusColor(_ status: SessionStatus) -> Color {
+        switch status {
+        case .starting, .running: return Palette.green
+        case .waitingForInput: return Palette.yellow
+        case .idle: return Palette.fgMuted
+        case .finished, .archived: return Palette.fgMuted
+        case .prOpen: return Palette.blue
+        case .merged: return Palette.purple
+        case .failed: return Palette.red
+        }
+    }
+}
+
+/// Tinted circle with the project's first letter — gives each project a
+/// distinct visual hook without requiring a real avatar.
+struct ProjectInitial: View {
+    let name: String
+
+    private var letter: String {
+        String(name.prefix(1)).uppercased()
+    }
+
+    private var tint: Color {
+        // Map name hash to one of the Atom palette accents for stable variety.
+        let hue = abs(name.hashValue) % 6
+        switch hue {
+        case 0: return Palette.blue
+        case 1: return Palette.purple
+        case 2: return Palette.green
+        case 3: return Palette.orange
+        case 4: return Palette.cyan
+        default: return Palette.yellow
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(tint.opacity(0.18))
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(tint.opacity(0.30), lineWidth: 0.5)
+            Text(letter)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(tint)
+        }
+        .frame(width: 22, height: 22)
     }
 }
 
@@ -113,7 +189,7 @@ struct AddProjectSheet: View {
                 TextField("Folder ID (optional)", text: $wrikeFolder)
             }
             if let error {
-                Section { Text(error).foregroundStyle(.red) }
+                Section { Text(error).foregroundStyle(Palette.red) }
             }
         }
         .formStyle(.grouped)

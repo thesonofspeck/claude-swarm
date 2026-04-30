@@ -21,9 +21,9 @@ struct ClaudeSwarmApp: App {
                 .environmentObject(env.projectList)
                 .environmentObject(env.registry)
                 .frame(minWidth: 1100, minHeight: 700)
-                .task {
-                    await env.notifier.requestAuthorization()
-                }
+                .background(Palette.bgBase)
+                .tint(Palette.blue)
+                .task { await env.notifier.requestAuthorization() }
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
@@ -37,6 +37,7 @@ struct ClaudeSwarmApp: App {
         Settings {
             SettingsSheet()
                 .environmentObject(env)
+                .tint(Palette.blue)
         }
     }
 }

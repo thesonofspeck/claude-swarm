@@ -17,28 +17,50 @@ struct AgentsTab: View {
         if let project {
             HSplitView {
                 List(Installer.agentNames, id: \.self, selection: $selectedAgent) { name in
-                    HStack {
-                        Image(systemName: icon(for: name)).foregroundStyle(.secondary)
+                    HStack(spacing: Metrics.Space.sm) {
+                        Image(systemName: icon(for: name))
+                            .foregroundStyle(tint(for: name))
+                            .imageScale(.small)
+                            .frame(width: 18, height: 18)
+                            .background(Circle().fill(tint(for: name).opacity(0.10)))
                         Text(name)
+                            .font(Type.body)
+                            .foregroundStyle(Palette.fg)
                         Spacer()
                         if name == "team-lead" {
-                            Text("primary").font(.caption2).foregroundStyle(.secondary)
+                            Pill(text: "PRIMARY", tint: Palette.blue)
                         }
                     }
+                    .padding(.vertical, 2)
                     .tag(name)
                 }
-                .frame(minWidth: 200, idealWidth: 240)
+                .frame(minWidth: 220, idealWidth: 260)
                 .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+                .background(Palette.bgSidebar)
 
                 editor(for: project)
             }
             .task(id: "\(project.id)|\(selectedAgent)") { load(project: project) }
         } else {
-            ContentUnavailableView(
-                "No project selected",
+            EmptyState(
+                title: "No project selected",
                 systemImage: "person.3",
-                description: Text("Pick a project to view its agents.")
+                description: "Pick a project to view its agents.",
+                tint: Palette.fgMuted
             )
+        }
+    }
+
+    private func tint(for name: String) -> Color {
+        switch name {
+        case "team-lead": return Palette.blue
+        case "ux-designer": return Palette.purple
+        case "systems-architect": return Palette.cyan
+        case "engineer": return Palette.green
+        case "qe": return Palette.orange
+        case "reviewer": return Palette.yellow
+        default: return Palette.fgMuted
         }
     }
 
@@ -55,10 +77,18 @@ struct AgentsTab: View {
     }
 
     private func editor(for project: Project) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(selectedAgent).font(.headline)
-                if dirty { Text("•").foregroundStyle(.orange) }
+        VStack(alignment: .leading, spacing: Metrics.Space.sm) {
+            HStack(spacing: Metrics.Space.sm) {
+                Image(systemName: icon(for: selectedAgent))
+                    .foregroundStyle(tint(for: selectedAgent))
+                Text(selectedAgent)
+                    .font(Type.heading)
+                    .foregroundStyle(Palette.fgBright)
+                if dirty {
+                    Circle()
+                        .fill(Palette.orange)
+                        .frame(width: 6, height: 6)
+                }
                 Spacer()
                 Button("Reset to default") {
                     resetToDefault(project: project)
@@ -68,29 +98,46 @@ struct AgentsTab: View {
                 Button("Save") {
                     save(project: project)
                 }
+                .buttonStyle(.borderedProminent)
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(!dirty)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(.horizontal, Metrics.Space.lg)
+            .padding(.top, Metrics.Space.md)
 
             if let error {
                 Label(error, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 16)
+                    .foregroundStyle(Palette.orange)
+                    .padding(.horizontal, Metrics.Space.lg)
             }
 
             TextEditor(text: $content)
-                .font(.system(.body, design: .monospaced))
-                .padding(.horizontal, 8)
+                .font(Type.mono)
+                .scrollContentBackground(.hidden)
+                .padding(.horizontal, Metrics.Space.sm)
+                .background(Palette.bgBase)
                 .onChange(of: content) { _, _ in dirty = true }
                 .overlay(alignment: .topTrailing) {
                     if savedToast {
-                        Label("Saved", systemImage: "checkmark.circle.fill")
-                            .padding(8)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
-                            .padding(8)
-                            .transition(.opacity)
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(Palette.green)
+                            Text("Saved")
+                                .font(Type.caption)
+                                .foregroundStyle(Palette.fg)
+                        }
+                        .padding(.horizontal, Metrics.Space.sm)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: Metrics.Radius.md)
+                                .fill(Palette.bgRaised)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Metrics.Radius.md)
+                                .stroke(Palette.divider, lineWidth: Metrics.Stroke.hairline)
+                        )
+                        .padding(Metrics.Space.md)
+                        .transition(.opacity.combined(with: .scale(scale: 0.92)))
                     }
                 }
         }

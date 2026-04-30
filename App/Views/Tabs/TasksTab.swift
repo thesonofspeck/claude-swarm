@@ -26,52 +26,57 @@ struct TasksTab: View {
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: Metrics.Space.sm) {
             if let project {
+                ProjectInitial(name: project.name)
                 Text(project.name)
-                    .font(.headline)
+                    .font(Type.heading)
+                    .foregroundStyle(Palette.fgBright)
                 Spacer()
                 if let folder = project.wrikeFolderId {
-                    Label(folder, systemImage: "folder.badge.gearshape")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Pill(text: folder, systemImage: "folder.badge.gearshape", tint: Palette.cyan)
                 }
-                Button {
+                IconButton(systemImage: "arrow.clockwise", help: "Refresh tasks") {
                     Task { await load() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
                 }
-                .buttonStyle(.borderless)
-                .help("Refresh tasks")
             } else {
-                Text("No project selected").font(.headline).foregroundStyle(.secondary)
+                Text("No project selected")
+                    .font(Type.heading)
+                    .foregroundStyle(Palette.fgMuted)
                 Spacer()
             }
         }
-        .padding(12)
+        .padding(Metrics.Space.md)
+        .background(Palette.bgSidebar)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Palette.divider).frame(height: Metrics.Stroke.hairline)
+        }
     }
 
     @ViewBuilder
     private var content: some View {
         if let project, project.wrikeFolderId == nil {
-            ContentUnavailableView(
-                "No Wrike folder mapped",
+            EmptyState(
+                title: "No Wrike folder mapped",
                 systemImage: "link.slash",
-                description: Text("Edit this project to map it to a Wrike folder.")
+                description: "Edit this project to map it to a Wrike folder.",
+                tint: Palette.orange
             )
         } else if loading {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let error {
-            ContentUnavailableView(
-                "Couldn't load tasks",
+            EmptyState(
+                title: "Couldn't load tasks",
                 systemImage: "exclamationmark.triangle",
-                description: Text(error)
+                description: error,
+                tint: Palette.red
             )
         } else if tasks.isEmpty {
-            ContentUnavailableView(
-                "No tasks",
+            EmptyState(
+                title: "No tasks",
                 systemImage: "tray",
-                description: Text("This Wrike folder has no tasks visible to you.")
+                description: "This Wrike folder has no tasks visible to you.",
+                tint: Palette.fgMuted
             )
         } else {
             List(tasks) { task in
@@ -79,7 +84,11 @@ struct TasksTab: View {
                     pendingTask = task
                     initialPrompt = task.descriptionPlainText
                 }
+                .listRowBackground(Palette.bgBase)
+                .listRowSeparatorTint(Palette.divider)
             }
+            .scrollContentBackground(.hidden)
+            .background(Palette.bgBase)
             .sheet(item: $pendingTask) { task in
                 StartSessionSheet(
                     task: task,
@@ -140,26 +149,30 @@ private struct TaskRow: View {
     let onStart: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: Metrics.Space.md) {
             Image(systemName: "checklist")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Palette.purple)
+                .imageScale(.medium)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(Palette.purple.opacity(0.10)))
                 .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(task.title).font(.callout.weight(.medium))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(task.title)
+                    .font(Type.body)
+                    .foregroundStyle(Palette.fgBright)
                 let desc = task.descriptionPlainText
                 if !desc.isEmpty {
                     Text(desc)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Type.caption)
+                        .foregroundStyle(Palette.fgMuted)
                         .lineLimit(2)
                 }
-                HStack(spacing: 8) {
-                    Label(task.status, systemImage: "circle.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    if let perm = task.permalink {
-                        Link("Open in Wrike", destination: URL(string: perm)!)
-                            .font(.caption2)
+                HStack(spacing: Metrics.Space.sm) {
+                    Pill(text: task.status, systemImage: "circle.fill", tint: Palette.cyan)
+                    if let perm = task.permalink, let url = URL(string: perm) {
+                        Link(destination: url) {
+                            Pill(text: "Wrike", systemImage: "arrow.up.right.square", tint: Palette.fgMuted)
+                        }
                     }
                 }
             }
@@ -168,7 +181,7 @@ private struct TaskRow: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
     }
 }
 
@@ -181,34 +194,47 @@ struct StartSessionSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Start session for \(task.title)")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: Metrics.Space.md) {
+            HStack(spacing: Metrics.Space.sm) {
+                Image(systemName: "play.circle.fill")
+                    .foregroundStyle(Palette.green)
+                    .imageScale(.large)
+                Text("Start session")
+                    .font(Type.title)
+                    .foregroundStyle(Palette.fgBright)
+            }
+            Text(task.title).font(Type.heading).foregroundStyle(Palette.fgBright)
             Text("A new git worktree and branch will be created. The team-lead agent will start with the prompt below.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(Type.caption)
+                .foregroundStyle(Palette.fgMuted)
 
             TextEditor(text: $initialPrompt)
-                .font(.system(.body, design: .monospaced))
-                .frame(minHeight: 200)
+                .font(Type.mono)
+                .scrollContentBackground(.hidden)
+                .padding(Metrics.Space.sm)
+                .background(Palette.bgBase)
+                .frame(minHeight: 220)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.secondary.opacity(0.3))
+                    RoundedRectangle(cornerRadius: Metrics.Radius.md)
+                        .stroke(Palette.divider, lineWidth: Metrics.Stroke.regular)
                 )
 
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Start session") {
+                Button {
                     Task { await onConfirm() }
+                } label: {
+                    Label(starting ? "Starting…" : "Start session", systemImage: "play.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(starting)
             }
         }
-        .padding(20)
-        .frame(width: 560, height: 380)
+        .padding(Metrics.Space.xl)
+        .frame(width: 580, height: 420)
+        .background(Palette.bgSidebar)
     }
 }
 
