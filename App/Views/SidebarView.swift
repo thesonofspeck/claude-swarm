@@ -2,6 +2,7 @@ import SwiftUI
 import AppCore
 import PersistenceKit
 import ClaudeSwarmNotifications
+import GitKit
 
 struct SidebarView: View {
     @EnvironmentObject var env: AppEnvironment
@@ -236,8 +237,11 @@ struct AddProjectSheet: View {
     @State private var path = ""
     @State private var baseBranch = "main"
     @State private var wrikeFolder = ""
+    @State private var githubOwner = ""
+    @State private var githubRepo = ""
     @State private var creating = false
     @State private var error: String?
+    @State private var detectedRepo: String?
 
     var body: some View {
         Form {
@@ -249,6 +253,13 @@ struct AddProjectSheet: View {
                 }
                 TextField("Default base branch", text: $baseBranch)
             }
+            Section("GitHub") {
+                if let detectedRepo {
+                    Pill(text: detectedRepo, systemImage: "checkmark.seal", tint: Palette.green)
+                }
+                TextField("Owner", text: $githubOwner)
+                TextField("Repo", text: $githubRepo)
+            }
             Section("Wrike") {
                 TextField("Folder ID (optional)", text: $wrikeFolder)
             }
@@ -257,14 +268,18 @@ struct AddProjectSheet: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 480, height: 360)
+        .frame(width: 520, height: 460)
         .onAppear {
             if let initialPath, path.isEmpty {
                 path = initialPath
                 if name.isEmpty {
                     name = (initialPath as NSString).lastPathComponent
                 }
+                autodiscover(at: initialPath)
             }
+        }
+        .onChange(of: path) { _, newValue in
+            autodiscover(at: newValue)
         }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
@@ -276,7 +291,9 @@ struct AddProjectSheet: View {
                         creating = true
                         await projectList.register(
                             name: name, path: path, baseBranch: baseBranch,
-                            wrikeFolder: wrikeFolder.isEmpty ? nil : wrikeFolder
+                            wrikeFolder: wrikeFolder.isEmpty ? nil : wrikeFolder,
+                            githubOwner: githubOwner.isEmpty ? nil : githubOwner,
+                            githubRepo: githubRepo.isEmpty ? nil : githubRepo
                         )
                         creating = false
                         if projectList.error == nil { dismiss() }
@@ -296,6 +313,20 @@ struct AddProjectSheet: View {
         if panel.runModal() == .OK, let url = panel.url {
             path = url.path
             if name.isEmpty { name = url.lastPathComponent }
+            autodiscover(at: url.path)
+        }
+    }
+
+    private func autodiscover(at path: String) {
+        guard !path.isEmpty,
+              let origin = GitConfigParser.origin(in: URL(fileURLWithPath: path)) else {
+            detectedRepo = nil
+            return
+        }
+        if let owner = origin.owner, githubOwner.isEmpty { githubOwner = owner }
+        if let repo = origin.repo, githubRepo.isEmpty { githubRepo = repo }
+        if let owner = origin.owner, let repo = origin.repo {
+            detectedRepo = "\(owner)/\(repo)"
         }
     }
 }

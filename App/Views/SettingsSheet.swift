@@ -29,6 +29,8 @@ struct SettingsSheet: View {
                 .tabItem { Label("iPhone", systemImage: "iphone.gen3") }
             apnsTab
                 .tabItem { Label("Push", systemImage: "bell.badge") }
+            diagnosticsTab
+                .tabItem { Label("Diagnostics", systemImage: "stethoscope") }
         }
         .padding()
         .frame(width: 620, height: 540)
@@ -173,11 +175,67 @@ struct SettingsSheet: View {
                         Task { await env.remote.sleepGuard.setHonourBattery(value) }
                     }
             }
+            Section("Quiet hours") {
+                Toggle("Hold pushes during quiet hours", isOn: $quietHoursEnabled)
+                    .onChange(of: quietHoursEnabled) { _, _ in saveQuietHours() }
+                if quietHoursEnabled {
+                    DatePicker(
+                        "Start",
+                        selection: $quietHoursStart,
+                        displayedComponents: [.hourAndMinute]
+                    )
+                    .onChange(of: quietHoursStart) { _, _ in saveQuietHours() }
+                    DatePicker(
+                        "End",
+                        selection: $quietHoursEnd,
+                        displayedComponents: [.hourAndMinute]
+                    )
+                    .onChange(of: quietHoursEnd) { _, _ in saveQuietHours() }
+                    Text("Approval pushes during this window are held and delivered when it ends. Live WebSocket events still flow.")
+                        .font(Type.caption)
+                        .foregroundStyle(Palette.fgMuted)
+                }
+            }
         }
         .formStyle(.grouped)
+        .task { reloadQuietHours() }
         .sheet(isPresented: $showPairingSheet) {
             PairingSheet().environmentObject(env)
         }
+    }
+
+    @State private var quietHoursEnabled = false
+    @State private var quietHoursStart = Date()
+    @State private var quietHoursEnd = Date()
+
+    private func reloadQuietHours() {
+        quietHoursEnabled = env.settings.quietHoursEnabled
+        quietHoursStart = dateFromMinute(env.settings.quietHoursStartMinute)
+        quietHoursEnd = dateFromMinute(env.settings.quietHoursEndMinute)
+    }
+
+    private func saveQuietHours() {
+        env.settings.quietHoursEnabled = quietHoursEnabled
+        env.settings.quietHoursStartMinute = minuteFrom(quietHoursStart)
+        env.settings.quietHoursEndMinute = minuteFrom(quietHoursEnd)
+        env.saveSettings()
+    }
+
+    private func dateFromMinute(_ minutes: Int) -> Date {
+        var comps = DateComponents()
+        comps.hour = minutes / 60
+        comps.minute = minutes % 60
+        return Calendar.current.date(from: comps) ?? Date()
+    }
+
+    private func minuteFrom(_ date: Date) -> Int {
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+    }
+
+    private var diagnosticsTab: some View {
+        DiagnosticsView()
+            .environmentObject(env)
     }
 
     @State private var apnsTeamId = ""

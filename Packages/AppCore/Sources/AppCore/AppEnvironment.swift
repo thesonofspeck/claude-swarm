@@ -108,6 +108,20 @@ public final class AppEnvironment: ObservableObject {
 
         let registryRef = self.registry
         let repoRef = self.sessionsRepo
+
+        // Quiet hours: queue pushes during the window, drain on a timer
+        // when the window opens.
+        let settingsRef = { [weak self] in self?.settings ?? AppSettings() }
+        self.remote.quietHoursPredicate = { settingsRef().isInQuietHours() }
+        Task { [weak self] in
+            while let self {
+                try? await Task.sleep(nanoseconds: 60 * 1_000_000_000)
+                if !self.settings.isInQuietHours() {
+                    await self.remote.drainQueuedPushes()
+                }
+            }
+        }
+
         let janitor = WorktreeJanitor(projects: projects, sessions: sessionsRepo)
         let memoryRef = self.memory
         Task.detached {
@@ -199,6 +213,9 @@ public struct AppSettings: Codable, Equatable {
     public var defaultBaseBranch: String
     public var notificationSoundEnabled: Bool
     public var hasCompletedOnboarding: Bool
+    public var quietHoursEnabled: Bool
+    public var quietHoursStartMinute: Int   // minutes since 00:00 local time
+    public var quietHoursEndMinute: Int
 
     public init(
         claudeExecutable: String = "/usr/local/bin/claude",
@@ -207,7 +224,10 @@ public struct AppSettings: Codable, Equatable {
         pythonExecutable: String = "/usr/bin/python3",
         defaultBaseBranch: String = "main",
         notificationSoundEnabled: Bool = true,
-        hasCompletedOnboarding: Bool = false
+        hasCompletedOnboarding: Bool = false,
+        quietHoursEnabled: Bool = false,
+        quietHoursStartMinute: Int = 19 * 60,
+        quietHoursEndMinute: Int = 8 * 60
     ) {
         self.claudeExecutable = claudeExecutable
         self.ghExecutable = ghExecutable
@@ -216,6 +236,20 @@ public struct AppSettings: Codable, Equatable {
         self.defaultBaseBranch = defaultBaseBranch
         self.notificationSoundEnabled = notificationSoundEnabled
         self.hasCompletedOnboarding = hasCompletedOnboarding
+        self.quietHoursEnabled = quietHoursEnabled
+        self.quietHoursStartMinute = quietHoursStartMinute
+        self.quietHoursEndMinute = quietHoursEndMinute
+    }
+
+    public func isInQuietHours(now: Date = Date(), calendar: Calendar = .current) -> Bool {
+        guard quietHoursEnabled else { return false }
+        let comps = calendar.dateComponents([.hour, .minute], from: now)
+        let nowMinute = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+        if quietHoursStartMinute <= quietHoursEndMinute {
+            return nowMinute >= quietHoursStartMinute && nowMinute < quietHoursEndMinute
+        }
+        // Window crosses midnight (e.g. 19:00 → 08:00).
+        return nowMinute >= quietHoursStartMinute || nowMinute < quietHoursEndMinute
     }
 
     public init(from decoder: Decoder) throws {
@@ -227,11 +261,15 @@ public struct AppSettings: Codable, Equatable {
         defaultBaseBranch = (try? c.decode(String.self, forKey: .defaultBaseBranch)) ?? "main"
         notificationSoundEnabled = (try? c.decode(Bool.self, forKey: .notificationSoundEnabled)) ?? true
         hasCompletedOnboarding = (try? c.decode(Bool.self, forKey: .hasCompletedOnboarding)) ?? false
+        quietHoursEnabled = (try? c.decode(Bool.self, forKey: .quietHoursEnabled)) ?? false
+        quietHoursStartMinute = (try? c.decode(Int.self, forKey: .quietHoursStartMinute)) ?? 19 * 60
+        quietHoursEndMinute = (try? c.decode(Int.self, forKey: .quietHoursEndMinute)) ?? 8 * 60
     }
 
     private enum CodingKeys: String, CodingKey {
         case claudeExecutable, ghExecutable, gitExecutable, pythonExecutable
         case defaultBaseBranch, notificationSoundEnabled, hasCompletedOnboarding
+        case quietHoursEnabled, quietHoursStartMinute, quietHoursEndMinute
     }
 
     static func load(from url: URL) -> AppSettings? {

@@ -45,13 +45,22 @@ public final class ProjectListViewModel: ObservableObject {
         }
     }
 
-    public func register(name: String, path: String, baseBranch: String, wrikeFolder: String?) async {
+    public func register(
+        name: String,
+        path: String,
+        baseBranch: String,
+        wrikeFolder: String?,
+        githubOwner: String? = nil,
+        githubRepo: String? = nil
+    ) async {
         do {
             let project = Project(
                 name: name,
                 localPath: path,
                 defaultBaseBranch: baseBranch,
-                wrikeFolderId: wrikeFolder
+                wrikeFolderId: wrikeFolder,
+                githubOwner: githubOwner?.isEmpty == false ? githubOwner : nil,
+                githubRepo: githubRepo?.isEmpty == false ? githubRepo : nil
             )
             try projectsRepo.upsert(project)
             try await manager.bootstrap(project: project)

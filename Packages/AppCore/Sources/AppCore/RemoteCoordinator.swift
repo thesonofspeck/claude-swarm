@@ -51,6 +51,12 @@ public final class RemoteCoordinator: ObservableObject {
     private let macName: String
     private let configURL: URL
     private var sender: PushSender?
+    private var queuedPushes: [(payload: [String: Any], collapseId: String)] = []
+
+    /// When non-nil, returns true to defer pushes until the window ends.
+    /// Wired to AppEnvironment so RemoteCoordinator stays decoupled from
+    /// AppSettings while still respecting the quiet-hours toggle.
+    public var quietHoursPredicate: (() -> Bool)?
 
     public init(
         macId: String,
@@ -221,9 +227,27 @@ public final class RemoteCoordinator: ObservableObject {
         let backendEnabled = (pushConfig.backend == .direct && pushConfig.direct.enabled)
             || (pushConfig.backend == .relay && pushConfig.relay.enabled)
         guard backendEnabled else { return }
+        if quietHoursPredicate?() == true {
+            queuedPushes.append((payload, collapseId))
+            return
+        }
         let recipients = await store.all().compactMap { $0.apnsToken }
         for token in recipients {
             _ = try? await sender.send(payload: payload, to: token, collapseId: collapseId)
+        }
+    }
+
+    /// Send any pushes that were queued during the quiet-hours window.
+    /// AppEnvironment fires this on a timer that wakes when quiet hours end.
+    public func drainQueuedPushes() async {
+        guard let sender else { queuedPushes.removeAll(); return }
+        let pending = queuedPushes
+        queuedPushes.removeAll()
+        let recipients = await store.all().compactMap { $0.apnsToken }
+        for entry in pending {
+            for token in recipients {
+                _ = try? await sender.send(payload: entry.payload, to: token, collapseId: entry.collapseId)
+            }
         }
     }
 
