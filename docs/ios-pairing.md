@@ -68,6 +68,12 @@ unpair from Settings.
 
 ## How it works
 
+- Transport: `wss://` over the user's LAN/VPN. The Mac generates a
+  self-signed P-256 cert on first launch (via `/usr/bin/openssl`) and
+  stores it in Keychain. The QR pairing invite carries the cert's
+  SHA-256 thumbprint; the iOS client pins on it via a
+  `URLSessionDelegate`, so a host reachable on the same network can't
+  impersonate the Mac without also stealing the cert.
 - Pairing exchange: iOS sends a `pair` WireMessage with the device id +
   APNs token; Mac mints a 32-byte bearer token and returns it in
   `paired`. Subsequent reconnects authenticate via `hello`.

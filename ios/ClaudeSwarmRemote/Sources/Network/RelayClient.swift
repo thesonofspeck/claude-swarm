@@ -1,10 +1,15 @@
 import Foundation
 import Combine
+import CryptoKit
 import PairingProtocol
 
 /// A single iOS↔Mac WebSocket session. Auto-reconnects with capped
 /// exponential backoff. Publishes inbound `ServerEvent`s as a stream and
 /// exposes a `send` for outbound `ClientCommand`s.
+///
+/// TLS uses self-signed certs generated on the Mac; the iOS client pins
+/// on the SHA-256 thumbprint of the server cert (passed via the QR
+/// invite and stored alongside the bearer token).
 @MainActor
 final class RelayClient: ObservableObject {
     enum ConnectionState: Equatable {
@@ -36,7 +41,8 @@ final class RelayClient: ObservableObject {
         let cfg = URLSessionConfiguration.default
         cfg.waitsForConnectivity = true
         cfg.timeoutIntervalForRequest = 15
-        self.session = URLSession(configuration: cfg)
+        let pin = CertPinDelegate(thumbprint: mac.certThumbprint)
+        self.session = URLSession(configuration: cfg, delegate: pin, delegateQueue: nil)
     }
 
     func updateApnsToken(_ token: String?) {
@@ -46,7 +52,7 @@ final class RelayClient: ObservableObject {
     func connect() {
         guard task == nil else { return }
         state = .connecting
-        guard let url = URL(string: "ws://\(mac.host):\(mac.port)/") else {
+        guard let url = URL(string: "wss://\(mac.host):\(mac.port)/") else {
             state = .failed("Bad URL")
             return
         }
@@ -178,6 +184,38 @@ final class RelayClient: ObservableObject {
         reconnectTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             self?.connect()
+        }
+    }
+}
+
+/// Pins the server's TLS cert by SHA-256 thumbprint. We can't validate
+/// the cert via the system trust store (it's self-signed on the Mac), so
+/// we explicitly compare the leaf cert's DER hash against the thumbprint
+/// embedded in the QR pairing invite.
+final class CertPinDelegate: NSObject, URLSessionDelegate {
+    let thumbprint: String
+    init(thumbprint: String) { self.thumbprint = thumbprint }
+
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              let trust = challenge.protectionSpace.serverTrust,
+              SecTrustGetCertificateCount(trust) > 0,
+              let cert = SecTrustCopyCertificateChain(trust).flatMap({ ($0 as? [SecCertificate])?.first })
+                ?? SecTrustGetCertificateAtIndex(trust, 0)
+        else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        let der = SecCertificateCopyData(cert) as Data
+        let actual = SHA256.hash(data: der).map { String(format: "%02x", $0) }.joined()
+        if actual == thumbprint, !thumbprint.isEmpty {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        } else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
         }
     }
 }

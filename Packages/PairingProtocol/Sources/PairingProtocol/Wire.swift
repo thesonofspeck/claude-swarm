@@ -15,16 +15,44 @@ public struct PairingInvite: Codable, Equatable, Sendable {
     public let macName: String
     public let pairingCode: String   // single-use code valid for ~5 minutes
     public let bundleId: String      // expected iOS bundle id (sanity check)
+    /// SHA-256 of the Mac's TLS cert DER, hex-encoded. iOS pins on this so
+    /// a man-in-the-middle on the LAN can't impersonate the server.
+    public let certThumbprint: String
     public let protocolVersion: Int
 
-    public init(host: String, port: UInt16, macId: String, macName: String, pairingCode: String, bundleId: String, protocolVersion: Int = WireProtocolVersion) {
+    public init(
+        host: String, port: UInt16,
+        macId: String, macName: String,
+        pairingCode: String, bundleId: String,
+        certThumbprint: String,
+        protocolVersion: Int = WireProtocolVersion
+    ) {
         self.host = host
         self.port = port
         self.macId = macId
         self.macName = macName
         self.pairingCode = pairingCode
         self.bundleId = bundleId
+        self.certThumbprint = certThumbprint
         self.protocolVersion = protocolVersion
+    }
+
+    /// Backwards-compatible decoder so older invites without a thumbprint
+    /// still parse (they pin to "" which the iOS client refuses).
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        host = try c.decode(String.self, forKey: .host)
+        port = try c.decode(UInt16.self, forKey: .port)
+        macId = try c.decode(String.self, forKey: .macId)
+        macName = try c.decode(String.self, forKey: .macName)
+        pairingCode = try c.decode(String.self, forKey: .pairingCode)
+        bundleId = try c.decode(String.self, forKey: .bundleId)
+        certThumbprint = (try? c.decode(String.self, forKey: .certThumbprint)) ?? ""
+        protocolVersion = (try? c.decode(Int.self, forKey: .protocolVersion)) ?? WireProtocolVersion
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case host, port, macId, macName, pairingCode, bundleId, certThumbprint, protocolVersion
     }
 }
 

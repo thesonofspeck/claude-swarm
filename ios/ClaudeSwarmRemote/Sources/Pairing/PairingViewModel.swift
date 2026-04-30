@@ -33,11 +33,16 @@ final class PairingViewModel: ObservableObject {
 
     func pair(invite: PairingInvite, apnsToken: String?) async {
         status = .connecting
-        guard let url = URL(string: "ws://\(invite.host):\(invite.port)/") else {
+        guard !invite.certThumbprint.isEmpty else {
+            status = .failure("Invite is missing a TLS thumbprint. Update Claude Swarm on the Mac and re-issue the QR.")
+            return
+        }
+        guard let url = URL(string: "wss://\(invite.host):\(invite.port)/") else {
             status = .failure("Invalid host in invite.")
             return
         }
-        let session = URLSession(configuration: .ephemeral)
+        let pin = CertPinDelegate(thumbprint: invite.certThumbprint)
+        let session = URLSession(configuration: .ephemeral, delegate: pin, delegateQueue: nil)
         let task = session.webSocketTask(with: url)
         task.resume()
         let req = PairRequest(
@@ -71,6 +76,7 @@ final class PairingViewModel: ObservableObject {
                     host: invite.host,
                     port: invite.port,
                     bearerToken: result.bearerToken,
+                    certThumbprint: invite.certThumbprint,
                     pairedAt: Date()
                 )
                 store.save(paired)

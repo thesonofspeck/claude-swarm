@@ -4,7 +4,7 @@ import XCTest
 final class PairingInviteServiceTests: XCTestCase {
     func testIssueAndConsume() async {
         let svc = PairingInviteService(macId: "MAC", macName: "ada-mbp")
-        let invite = await svc.issue(host: "10.0.0.4", port: 7321)
+        let invite = await svc.issue(host: "10.0.0.4", port: 7321, certThumbprint: "abc")
         XCTAssertEqual(invite.macId, "MAC")
         XCTAssertEqual(invite.host, "10.0.0.4")
         let consumed = await svc.consume(code: invite.pairingCode)
@@ -13,7 +13,7 @@ final class PairingInviteServiceTests: XCTestCase {
 
     func testCodeIsSingleUse() async {
         let svc = PairingInviteService(macId: "MAC", macName: "ada-mbp")
-        let invite = await svc.issue(host: "h", port: 1)
+        let invite = await svc.issue(host: "h", port: 1, certThumbprint: "x")
         XCTAssertNotNil(await svc.consume(code: invite.pairingCode))
         XCTAssertNil(await svc.consume(code: invite.pairingCode))
     }

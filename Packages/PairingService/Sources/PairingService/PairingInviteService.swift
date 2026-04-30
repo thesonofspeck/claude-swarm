@@ -20,13 +20,18 @@ public actor PairingInviteService {
         self.bundleId = bundleId
     }
 
-    public func issue(host: String, port: UInt16, ttl: TimeInterval = 300) -> PairingInvite {
+    public func issue(
+        host: String, port: UInt16,
+        certThumbprint: String,
+        ttl: TimeInterval = 300
+    ) -> PairingInvite {
         let code = Self.makeCode()
         let invite = PairingInvite(
             host: host, port: port,
             macId: macId, macName: macName,
             pairingCode: code,
-            bundleId: bundleId
+            bundleId: bundleId,
+            certThumbprint: certThumbprint
         )
         outstanding[code] = OutstandingInvite(invite: invite, expiresAt: Date().addingTimeInterval(ttl))
         return invite

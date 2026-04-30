@@ -107,7 +107,11 @@ public final class RemoteCoordinator: ObservableObject {
     // MARK: - Pairing
 
     public func issueInvite() async -> PairingInvite {
-        await invites.issue(host: bestHostname(), port: server.port.rawValue)
+        await invites.issue(
+            host: bestHostname(),
+            port: server.port.rawValue,
+            certThumbprint: server.certThumbprint
+        )
     }
 
     public func unpair(deviceId: String) async {

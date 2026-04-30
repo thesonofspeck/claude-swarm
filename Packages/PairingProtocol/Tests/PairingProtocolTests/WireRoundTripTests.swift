@@ -7,7 +7,8 @@ final class WireRoundTripTests: XCTestCase {
             host: "192.168.10.4", port: 7321,
             macId: "MAC-123", macName: "ada-mbp",
             pairingCode: "ABCD-1234",
-            bundleId: "com.claudeswarm.remote"
+            bundleId: "com.claudeswarm.remote",
+            certThumbprint: "deadbeef"
         )
         let encoded = try PairCodec.encodeInvite(invite)
         let decoded = try PairCodec.decodeInvite(encoded)

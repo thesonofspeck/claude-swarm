@@ -8,9 +8,37 @@ struct PairedMac: Codable, Equatable, Identifiable, Hashable {
     var host: String
     var port: UInt16
     var bearerToken: String
+    var certThumbprint: String      // SHA-256 hex of the Mac's TLS cert
     var pairedAt: Date
 
     var id: String { macId }
+
+    init(macId: String, macName: String, host: String, port: UInt16,
+         bearerToken: String, certThumbprint: String, pairedAt: Date) {
+        self.macId = macId
+        self.macName = macName
+        self.host = host
+        self.port = port
+        self.bearerToken = bearerToken
+        self.certThumbprint = certThumbprint
+        self.pairedAt = pairedAt
+    }
+
+    /// Backwards-compat decode for records persisted before TLS support.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        macId = try c.decode(String.self, forKey: .macId)
+        macName = try c.decode(String.self, forKey: .macName)
+        host = try c.decode(String.self, forKey: .host)
+        port = try c.decode(UInt16.self, forKey: .port)
+        bearerToken = try c.decode(String.self, forKey: .bearerToken)
+        certThumbprint = (try? c.decode(String.self, forKey: .certThumbprint)) ?? ""
+        pairedAt = try c.decode(Date.self, forKey: .pairedAt)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case macId, macName, host, port, bearerToken, certThumbprint, pairedAt
+    }
 }
 
 /// Persists PairedMac records in Keychain (one item per macId, plus an

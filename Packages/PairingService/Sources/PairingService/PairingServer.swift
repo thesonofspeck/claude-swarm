@@ -14,6 +14,8 @@ public final class PairingServer: @unchecked Sendable {
     public let macName: String
     public let macId: String
 
+    public private(set) var certThumbprint: String = ""
+
     private let store: PairStore
     private let invites: PairingInviteService
     private let queue = DispatchQueue(label: "com.claudeswarm.pairing.server")
@@ -42,7 +44,21 @@ public final class PairingServer: @unchecked Sendable {
     }
 
     public func start() throws {
-        let parameters = NWParameters(tls: nil, tcp: .init())
+        let identity = try PairingTLS.loadOrGenerate(macId: macId)
+        certThumbprint = identity.thumbprintHex
+
+        let tlsOptions = NWProtocolTLS.Options()
+        let secIdentity = sec_identity_create(identity.secIdentity)!
+        sec_protocol_options_set_local_identity(
+            tlsOptions.securityProtocolOptions, secIdentity
+        )
+        // We pin via SHA-256 thumbprint on the iOS side, so don't require a
+        // cert from clients.
+        sec_protocol_options_set_peer_authentication_required(
+            tlsOptions.securityProtocolOptions, false
+        )
+
+        let parameters = NWParameters(tls: tlsOptions, tcp: .init())
         let websocket = NWProtocolWebSocket.Options()
         websocket.autoReplyPing = true
         parameters.defaultProtocolStack.applicationProtocols.insert(websocket, at: 0)
