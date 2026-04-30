@@ -17,6 +17,7 @@ public struct PTYTerminalView: NSViewRepresentable {
         let view = LocalProcessTerminalView(frame: .zero)
         view.processDelegate = context.coordinator
         context.coordinator.recorder = try? TranscriptRecorder(url: spec.transcriptURL)
+        context.coordinator.bind(view: view, sessionId: spec.id)
 
         applyAtomPalette(to: view)
 
@@ -58,21 +59,48 @@ public struct PTYTerminalView: NSViewRepresentable {
     public final class Coordinator: NSObject, LocalProcessTerminalViewDelegate {
         let onExit: (Int32) -> Void
         var recorder: TranscriptRecorder?
+        weak var view: LocalProcessTerminalView?
+        var sessionId: String?
+        private var observer: NSObjectProtocol?
 
         init(onExit: @escaping (Int32) -> Void) {
             self.onExit = onExit
+            super.init()
+        }
+
+        deinit {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+        }
+
+        func bind(view: LocalProcessTerminalView, sessionId: String) {
+            self.view = view
+            self.sessionId = sessionId
+            if observer == nil {
+                observer = NotificationCenter.default.addObserver(
+                    forName: Notification.Name("ClaudeSwarm.RemoteInput"),
+                    object: nil,
+                    queue: .main
+                ) { [weak self] note in
+                    self?.handleRemoteInput(note)
+                }
+            }
+        }
+
+        private func handleRemoteInput(_ note: Notification) {
+            guard let info = note.userInfo,
+                  let id = info["sessionId"] as? String,
+                  id == sessionId,
+                  let text = info["text"] as? String,
+                  let view else { return }
+            view.send(txt: text + "\n")
         }
 
         public func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
-
         public func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
-
         public func hostCurrentDirectoryUpdate(source: LocalProcessTerminalView, directory: String?) {}
-
         public func processTerminated(source: LocalProcessTerminalView, exitCode: Int32?) {
             recorder?.close()
             onExit(exitCode ?? -1)
         }
     }
 }
-
