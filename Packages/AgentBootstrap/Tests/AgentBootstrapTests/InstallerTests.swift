@@ -11,7 +11,6 @@ final class InstallerTests: XCTestCase {
         let plan = BootstrapPlan(
             projectURL: temp,
             projectId: "P1",
-            memoryBinaryPath: "/usr/local/bin/swarm-memory-mcp",
             notifyScriptPath: "/usr/local/bin/notify.sh",
             policyScriptPath: "/usr/local/bin/policy.sh"
         )
@@ -25,16 +24,22 @@ final class InstallerTests: XCTestCase {
             let path = temp.appendingPathComponent(".claude/skills/\(name).md")
             XCTAssertTrue(FileManager.default.fileExists(atPath: path.path), "Missing skill: \(name)")
         }
+        XCTAssertTrue(BootstrapResources.bundledSkillNames.contains("memory"),
+                      "Memory skill should be bundled by default")
+
         let settings = temp.appendingPathComponent(".claude/settings.json")
         XCTAssertTrue(FileManager.default.fileExists(atPath: settings.path))
+        let settingsStr = try String(contentsOf: settings, encoding: .utf8)
+        XCTAssertTrue(settingsStr.contains(".claude/memory"),
+                      "Settings should grant permissions for the memory directory")
 
         let mcp = temp.appendingPathComponent(".mcp.json")
         XCTAssertTrue(FileManager.default.fileExists(atPath: mcp.path))
-
         let mcpData = try Data(contentsOf: mcp)
-        let mcpStr = String(data: mcpData, encoding: .utf8)!
-        XCTAssertTrue(mcpStr.contains("/usr/local/bin/swarm-memory-mcp"))
-        XCTAssertTrue(mcpStr.contains("\"P1\""))
+        let parsedMCP = try JSONSerialization.jsonObject(with: mcpData) as? [String: Any]
+        let servers = parsedMCP?["mcpServers"] as? [String: Any]
+        XCTAssertEqual(servers?.count ?? 0, 0,
+                       "Default project should ship with no MCP servers")
     }
 
     func testInstallMergesExistingSettings() throws {
@@ -51,7 +56,6 @@ final class InstallerTests: XCTestCase {
         let plan = BootstrapPlan(
             projectURL: temp,
             projectId: "P1",
-            memoryBinaryPath: "/m",
             notifyScriptPath: "/n",
             policyScriptPath: "/p"
         )

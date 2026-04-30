@@ -171,8 +171,8 @@ struct ClaudeMdSnippet {
             ## Working agreement
 
             - Default agent is `team-lead`. Delegates via the Task tool.
-            - Memory tools available via the swarm-memory MCP server.
-            - Use namespace `project:<id>` for shared notes, `session:<id>` for private scratch.
+            - Persistent notes live as Markdown under `.claude/memory/`.
+            - Use `.claude/memory/project/` for shared notes, `.claude/memory/session/<id>/` for private scratch.
             """
         ),
         ClaudeMdSnippet(

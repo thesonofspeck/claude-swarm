@@ -1,11 +1,3 @@
 {
-  "mcpServers": {
-    "swarm-memory": {
-      "command": "{{MEMORY_BIN}}",
-      "args": ["serve", "--stdio"],
-      "env": {
-        "CLAUDE_SWARM_PROJECT_ID": "{{PROJECT_ID}}"
-      }
-    }
-  }
+  "mcpServers": {}
 }

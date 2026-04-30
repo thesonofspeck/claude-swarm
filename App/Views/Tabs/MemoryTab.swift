@@ -168,14 +168,15 @@ struct MemoryTab: View {
     private func load() async {
         let namespaces = scopesToNamespaces()
         let q = query
-        let memory = env.memory
+        let scopedProject = project
         let collected = await ops.run {
-            try await withThrowingTaskGroup(of: [MemoryEntry].self) { group in
+            let store = try env.memoryStore(for: scopedProject)
+            return try await withThrowingTaskGroup(of: [MemoryEntry].self) { group in
                 for ns in namespaces {
                     group.addTask {
                         q.isEmpty
-                            ? try await memory.list(namespace: ns, limit: 100)
-                            : try await memory.search(q, namespace: ns, limit: 50)
+                            ? try await store.list(namespace: ns, limit: 100)
+                            : try await store.search(q, namespace: ns, limit: 50)
                     }
                 }
                 var out: [MemoryEntry] = []
@@ -203,9 +204,10 @@ struct MemoryTab: View {
     }
 
     private func delete(_ indices: IndexSet) async {
+        guard let store = try? env.memoryStore(for: project) else { return }
         for idx in indices {
             let id = entries[idx].id
-            try? await env.memory.delete(id: id)
+            try? await store.delete(id: id)
         }
         await load()
     }

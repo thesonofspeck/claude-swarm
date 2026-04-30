@@ -20,7 +20,6 @@ public final class AppEnvironment: ObservableObject {
     public let sessionsRepo: SessionRepository
     public let wrike: WrikeClient
     public let github: GitHubClient
-    public let memory: MemoryStore
     public let sessionManager: SessionManager
     public let notifier: Notifier
     public let installer: Installer
@@ -55,7 +54,6 @@ public final class AppEnvironment: ObservableObject {
         let appSettings = AppSettings.load(from: AppDirectories.settingsURL) ?? AppSettings()
         let ghRunner = GhRunner(executable: appSettings.ghExecutable.isEmpty ? nil : appSettings.ghExecutable)
         self.github = GitHubClient(runner: ghRunner)
-        self.memory = try MemoryStore()
         self.installer = Installer()
         self.diff = DiffService()
         self.history = HistoryService()
@@ -65,12 +63,10 @@ public final class AppEnvironment: ObservableObject {
 
         let notifyScript = try AppPaths.materializeNotifyScript()
         let policyScript = try AppPaths.materializePolicyScript()
-        let memoryBin = AppPaths.memoryBinary()
         let manager = SessionManager(
             sessions: sessionsRepo,
             projects: projects,
             installer: installer,
-            memoryBinaryPath: memoryBin.path,
             notifyScriptPath: notifyScript.path,
             policyScriptPath: policyScript.path
         )
@@ -147,10 +143,9 @@ public final class AppEnvironment: ObservableObject {
         backgroundTasks.append(drainTask)
 
         let janitor = WorktreeJanitor(projects: projects, sessions: sessionsRepo)
-        let memoryRef = self.memory
         Task.detached {
             _ = await janitor.reconcile()
-            let indexer = SpotlightIndexer(projects: projects, sessions: sessionsRepo, memory: memoryRef)
+            let indexer = SpotlightIndexer(projects: projects, sessions: sessionsRepo)
             await indexer.reindexAll()
         }
 
@@ -214,6 +209,16 @@ public final class AppEnvironment: ObservableObject {
         }
         self.hookServer = server
         try server.start()
+    }
+
+    /// Build a per-project memory store backed by `<projectRoot>/.claude/memory/`
+    /// plus the shared global directory. Pass `nil` for a global-only store.
+    public func memoryStore(for project: Project?) throws -> MemoryStore {
+        try MemoryStore(
+            projectRoot: project.map { URL(fileURLWithPath: $0.localPath) },
+            projectId: project?.id,
+            globalRoot: AppPaths.globalMemoryRoot
+        )
     }
 
     public func saveSettings() {

@@ -13,10 +13,6 @@ public enum AppDirectories {
         supportRoot.appendingPathComponent("swarm.sqlite")
     }
 
-    public static var memoryDatabaseURL: URL {
-        supportRoot.appendingPathComponent("memory.sqlite")
-    }
-
     public static var transcriptsDir: URL {
         supportRoot.appendingPathComponent("transcripts", isDirectory: true)
     }

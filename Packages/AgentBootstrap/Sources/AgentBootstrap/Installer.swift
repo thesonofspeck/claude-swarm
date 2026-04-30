@@ -3,20 +3,17 @@ import Foundation
 public struct BootstrapPlan: Equatable, Sendable {
     public let projectURL: URL
     public let projectId: String
-    public let memoryBinaryPath: String
     public let notifyScriptPath: String
     public let policyScriptPath: String
 
     public init(
         projectURL: URL,
         projectId: String,
-        memoryBinaryPath: String,
         notifyScriptPath: String,
         policyScriptPath: String
     ) {
         self.projectURL = projectURL
         self.projectId = projectId
-        self.memoryBinaryPath = memoryBinaryPath
         self.notifyScriptPath = notifyScriptPath
         self.policyScriptPath = policyScriptPath
     }
@@ -107,7 +104,6 @@ public struct Installer {
             throw InstallerError.missingResource("mcp.json")
         }
         let template = try String(contentsOf: url, encoding: .utf8)
-            .replacingOccurrences(of: "{{MEMORY_BIN}}", with: plan.memoryBinaryPath)
             .replacingOccurrences(of: "{{PROJECT_ID}}", with: plan.projectId)
         try mergeOrWriteJSON(
             template: template,

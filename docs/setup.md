@@ -32,20 +32,12 @@ packages. The first time:
    - Link package products: `AppCore`, `PersistenceKit`, `GitKit`,
      `DiffViewer`, `TerminalUI`, `SessionCore`, `ClaudeSwarmNotifications`,
      `AgentBootstrap`, `GitHubKit`, `WrikeKit`, `KeychainKit`, `MemoryService`
-5. Add a new macOS **Command Line Tool** target wrapping the memory MCP
-   server, then either:
-   - Add the `swarm-memory-mcp` executable target produced by SwiftPM as a
-     **Copy Files** build phase into the app's `Contents/MacOS/`, **or**
-   - `swift build -c release --product swarm-memory-mcp` and copy
-     `.build/release/swarm-memory-mcp` into
-     `~/Library/Application Support/ClaudeSwarm/bin/`. The app falls back to
-     this path if the bundled binary isn't found.
-6. Capabilities on the app target:
+5. Capabilities on the app target:
    - **Hardened Runtime**: ON
    - **App Sandbox**: OFF for v0.1 (we spawn child processes and touch
      arbitrary git checkouts; sandboxing is a separate project)
    - **User Notifications**: enabled (badge + alerts)
-7. Build & run. The app creates `~/Library/Application Support/ClaudeSwarm/`
+6. Build & run. The app creates `~/Library/Application Support/ClaudeSwarm/`
    on first launch.
 
 ## First run
@@ -57,9 +49,9 @@ packages. The first time:
    - Set default base branch (default `main`)
    - Optionally map to a Wrike folder ID
 3. The app installs `.claude/agents/*.md` (six default subagents),
-   `.claude/settings.json` (Notification + Stop hooks), and `.mcp.json`
-   (memory server) into the project. Existing files are merged, not
-   overwritten.
+   `.claude/skills/*.md` (memory + drafters), `.claude/settings.json`
+   (Notification + Stop hooks plus memory file permissions), and an empty
+   `.mcp.json` into the project. Existing files are merged, not overwritten.
 4. Open the **Tasks** tab → click a task → **Start session**.
 5. The app creates a worktree under
    `~/Library/Application Support/ClaudeSwarm/worktrees/<repo>/<task-slug>/`,
@@ -109,17 +101,19 @@ which the app's `HookSocketServer` consumes to:
 - Mark the session with a yellow dot in the sidebar
 - Update its DB status to `waitingForInput`
 
-## Memory MCP server
+## Memory
 
-Run standalone for debugging:
+Memory is filesystem-backed. Per-project notes live as Markdown with YAML
+frontmatter under `<repo>/.claude/memory/`:
 
-```sh
-swift run swarm-memory-mcp serve --stdio
-```
+- `.claude/memory/global/` — symlink target for cross-project notes
+  (actually a shared directory under
+  `~/Library/Application Support/ClaudeSwarm/memory/global/`)
+- `.claude/memory/project/` — shared across sessions in this project
+- `.claude/memory/session/<sessionId>/` — private to one session
 
-Send `{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n` on stdin to see the
-tool list. The DB lives at
-`~/Library/Application Support/ClaudeSwarm/memory.sqlite`.
+Read with `grep -rl` or `Read`; write with `Write`. The bundled `memory`
+skill teaches the agent the conventions; it lives at `.claude/skills/memory.md`.
 
 ## Smoke test (manual)
 
@@ -159,12 +153,9 @@ swift test --package-path Packages/AgentBootstrap
    `--prompt-file` if Claude Code supports it.
 2. **SwiftTerm color palette** — current build uses default xterm colors.
    Tune to match macOS dark/light Terminal palette before shipping.
-3. **`Bundle.main.url(forAuxiliaryExecutable:)`** — works inside an app
-   bundle but not in `swift run`. Falls back to
-   `~/Library/Application Support/ClaudeSwarm/bin/swarm-memory-mcp` then
-   PATH lookup.
-4. **`.mcp.json` shape** — verify Claude Code accepts the standard
-   `mcpServers` form when placed in the worktree root.
-5. **Hook environment passthrough** — confirm Claude Code preserves
+3. **`.mcp.json` shape** — verify Claude Code accepts the empty
+   `{"mcpServers": {}}` form when placed in the worktree root, and that
+   user-defined entries merged on top survive bootstrap re-runs.
+4. **Hook environment passthrough** — confirm Claude Code preserves
    `CLAUDE_SWARM_SESSION_ID` and `CLAUDE_SWARM_HOOK_SOCKET` env vars to the
    hook subprocess (the hook script reads them).

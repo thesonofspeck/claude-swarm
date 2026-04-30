@@ -8,10 +8,10 @@ and the things you'd otherwise have to repeat to every new session.
 
 - Default agent in this repo is **team-lead** (see `.claude/agents/team-lead.md`).
   Team-lead orchestrates: ux-designer, systems-architect, engineer, qe, reviewer.
-- All agents have access to a shared memory MCP server with these tools:
-  `mcp__memory__memory_write`, `memory_search`, `memory_get`, `memory_list`,
-  `memory_delete`. Use namespace `project:<id>` for shared notes,
-  `session:<id>` for private scratch, `global` for cross-project knowledge.
+- Persistent notes live as Markdown under `.claude/memory/`. The bundled
+  `memory` skill (`.claude/skills/memory.md`) explains the layout and conventions.
+  Use `.claude/memory/project/` for shared notes, `.claude/memory/session/<id>/`
+  for private scratch, `.claude/memory/global/` for cross-project knowledge.
 
 ## Style
 

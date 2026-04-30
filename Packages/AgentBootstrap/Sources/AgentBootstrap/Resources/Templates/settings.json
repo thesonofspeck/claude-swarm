@@ -1,4 +1,13 @@
 {
+  "permissions": {
+    "allow": [
+      "Read(./.claude/memory/**)",
+      "Write(./.claude/memory/**)",
+      "Edit(./.claude/memory/**)",
+      "Bash(grep:./.claude/memory/**)",
+      "Bash(ls:./.claude/memory/**)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {

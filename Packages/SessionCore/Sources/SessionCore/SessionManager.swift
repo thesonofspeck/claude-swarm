@@ -15,7 +15,6 @@ public actor SessionManager {
     public let installer: Installer
     public let transcriptsRoot: URL
     public let worktreesRoot: URL
-    public let memoryBinaryPath: String
     public let notifyScriptPath: String
     public let policyScriptPath: String
 
@@ -26,7 +25,6 @@ public actor SessionManager {
         installer: Installer = Installer(),
         transcriptsRoot: URL = AppDirectories.transcriptsDir,
         worktreesRoot: URL = AppDirectories.worktreesRoot,
-        memoryBinaryPath: String,
         notifyScriptPath: String,
         policyScriptPath: String
     ) {
@@ -36,18 +34,16 @@ public actor SessionManager {
         self.installer = installer
         self.transcriptsRoot = transcriptsRoot
         self.worktreesRoot = worktreesRoot
-        self.memoryBinaryPath = memoryBinaryPath
         self.notifyScriptPath = notifyScriptPath
         self.policyScriptPath = policyScriptPath
     }
 
     /// Bootstraps a project on registration: installs the 6 default subagents,
-    /// hooks, and the memory MCP server config into the project root.
+    /// hooks, the memory skill, and the empty `.mcp.json` into the project root.
     public func bootstrap(project: Project) throws {
         let plan = BootstrapPlan(
             projectURL: URL(fileURLWithPath: project.localPath),
             projectId: project.id,
-            memoryBinaryPath: memoryBinaryPath,
             notifyScriptPath: notifyScriptPath,
             policyScriptPath: policyScriptPath
         )

@@ -3,15 +3,11 @@ import PersistenceKit
 import AgentBootstrap
 
 public enum AppPaths {
-    public static func memoryBinary() -> URL {
-        if let bundled = Bundle.main.url(forAuxiliaryExecutable: "swarm-memory-mcp") {
-            return bundled
-        }
-        let support = AppDirectories.binDir.appendingPathComponent("swarm-memory-mcp")
-        if FileManager.default.isExecutableFile(atPath: support.path) {
-            return support
-        }
-        return URL(fileURLWithPath: "swarm-memory-mcp")
+    /// Shared global memory directory (cross-project). Per-project memory
+    /// lives under `<projectRoot>/.claude/memory/` and is owned by the project
+    /// store, not the app.
+    public static var globalMemoryRoot: URL {
+        AppDirectories.supportRoot.appendingPathComponent("memory/global", isDirectory: true)
     }
 
     public static func materializeNotifyScript() throws -> URL {

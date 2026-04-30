@@ -13,12 +13,16 @@ public actor SpotlightIndexer {
     public let domain = "com.claudeswarm.search"
     private let projects: ProjectRepository
     private let sessions: SessionRepository
-    private let memory: MemoryStore
+    private let globalMemoryRoot: URL
 
-    public init(projects: ProjectRepository, sessions: SessionRepository, memory: MemoryStore) {
+    public init(
+        projects: ProjectRepository,
+        sessions: SessionRepository,
+        globalMemoryRoot: URL = AppPaths.globalMemoryRoot
+    ) {
         self.projects = projects
         self.sessions = sessions
-        self.memory = memory
+        self.globalMemoryRoot = globalMemoryRoot
     }
 
     public func reindexAll() async {
@@ -57,7 +61,28 @@ public actor SpotlightIndexer {
     }
 
     private func memoryItems() async -> [CSSearchableItem] {
-        let entries = (try? await memory.list(namespace: nil, limit: 500)) ?? []
+        var entries: [MemoryEntry] = []
+        // Global-only store first.
+        if let globalStore = try? MemoryStore(
+            projectRoot: nil,
+            projectId: nil,
+            globalRoot: globalMemoryRoot
+        ),
+           let globalEntries = try? await globalStore.list(namespace: .global, limit: 500) {
+            entries.append(contentsOf: globalEntries)
+        }
+        // Per-project stores.
+        for project in (try? projects.all()) ?? [] {
+            let root = URL(fileURLWithPath: project.localPath)
+            guard let store = try? MemoryStore(
+                projectRoot: root,
+                projectId: project.id,
+                globalRoot: globalMemoryRoot
+            ) else { continue }
+            if let projectEntries = try? await store.list(namespace: .project(project.id), limit: 500) {
+                entries.append(contentsOf: projectEntries)
+            }
+        }
         return entries.map { entry in
             let attrs = CSSearchableItemAttributeSet(contentType: .text)
             attrs.title = entry.key ?? String(entry.content.prefix(60))
