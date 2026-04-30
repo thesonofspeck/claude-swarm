@@ -23,7 +23,8 @@ let package = Package(
         .package(path: "../SleepGuard"),
         .package(path: "../ToolDetector"),
         .package(path: "../BrewInstaller"),
-        .package(path: "../LibraryKit")
+        .package(path: "../LibraryKit"),
+        .package(path: "../AnthropicClient")
     ],
     targets: [
         .target(
@@ -44,7 +45,8 @@ let package = Package(
                 "SleepGuard",
                 "ToolDetector",
                 "BrewInstaller",
-                "LibraryKit"
+                "LibraryKit",
+                "AnthropicClient"
             ]
         ),
         .testTarget(name: "AppCoreTests", dependencies: ["AppCore"])

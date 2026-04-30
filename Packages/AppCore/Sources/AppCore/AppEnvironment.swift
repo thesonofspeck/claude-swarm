@@ -32,6 +32,7 @@ public final class AppEnvironment: ObservableObject {
     public let remote: RemoteCoordinator
     public let library: LibraryStore
     public let activity: ActivityLog
+    public let llm: LLMHelper
 
     @Published public var settings: AppSettings
     @Published public var lastError: String?
@@ -91,6 +92,7 @@ public final class AppEnvironment: ObservableObject {
         let libSource = TeamLibrarySource(cacheRoot: libraryCache)
         self.library = LibraryStore(teamSource: libSource)
         self.activity = ActivityLog(db: db)
+        self.llm = LLMHelper(keychain: keychain)
         let remoteRef = self.remote
         let projectsRef = self.projects
         remote.onSendInput = { sessionId, text in

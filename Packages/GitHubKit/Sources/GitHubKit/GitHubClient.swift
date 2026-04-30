@@ -159,6 +159,190 @@ public actor GitHubClient {
         _ = try await runner.run(["browse", url])
     }
 
+    // MARK: - Issues
+
+    public func listIssues(
+        owner: String, repo: String, state: String = "open", limit: Int = 30
+    ) async throws -> [GHIssue] {
+        try await runner.runJSON([
+            "issue", "list", "--repo", "\(owner)/\(repo)",
+            "--state", state, "--limit", "\(limit)",
+            "--json", "number,title,body,state,url,author,labels"
+        ])
+    }
+
+    public struct CreatedIssue: Equatable, Sendable {
+        public let number: Int
+        public let url: String
+    }
+
+    public func createIssue(
+        owner: String, repo: String,
+        title: String, body: String?,
+        labels: [String] = [], assignees: [String] = []
+    ) async throws -> CreatedIssue {
+        var args = ["issue", "create", "--repo", "\(owner)/\(repo)", "--title", title]
+        if !labels.isEmpty { args.append(contentsOf: ["--label", labels.joined(separator: ",")]) }
+        if !assignees.isEmpty { args.append(contentsOf: ["--assignee", assignees.joined(separator: ",")]) }
+        let result: GhResult
+        if let body, !body.isEmpty {
+            args.append(contentsOf: ["--body-file", "-"])
+            result = try await runner.run(args, stdin: Data(body.utf8))
+        } else {
+            args.append(contentsOf: ["--body", ""])
+            result = try await runner.run(args)
+        }
+        let url = result.stdout.split(separator: "\n").first { $0.contains("github.com") }
+            .map(String.init) ?? result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let number = url.split(separator: "/").last.flatMap { Int($0) } ?? 0
+        return CreatedIssue(number: number, url: url)
+    }
+
+    public func commentOnIssue(owner: String, repo: String, number: Int, body: String) async throws {
+        _ = try await runner.run(
+            ["issue", "comment", "\(number)", "--repo", "\(owner)/\(repo)", "--body-file", "-"],
+            stdin: Data(body.utf8)
+        )
+    }
+
+    public func closeIssue(owner: String, repo: String, number: Int) async throws {
+        _ = try await runner.run(["issue", "close", "\(number)", "--repo", "\(owner)/\(repo)"])
+    }
+
+    public func reopenIssue(owner: String, repo: String, number: Int) async throws {
+        _ = try await runner.run(["issue", "reopen", "\(number)", "--repo", "\(owner)/\(repo)"])
+    }
+
+    // MARK: - PR mutations
+
+    public enum MergeMethod: String, Sendable {
+        case squash, merge, rebase
+        var flag: String {
+            switch self {
+            case .squash: return "--squash"
+            case .merge: return "--merge"
+            case .rebase: return "--rebase"
+            }
+        }
+    }
+
+    public func mergePR(
+        owner: String, repo: String, number: Int,
+        method: MergeMethod = .squash, deleteBranch: Bool = true, admin: Bool = false
+    ) async throws {
+        var args = ["pr", "merge", "\(number)", "--repo", "\(owner)/\(repo)", method.flag]
+        if deleteBranch { args.append("--delete-branch") }
+        if admin { args.append("--admin") }
+        _ = try await runner.run(args)
+    }
+
+    public func updatePR(
+        owner: String, repo: String, number: Int,
+        title: String? = nil, body: String? = nil,
+        addLabels: [String] = [], removeLabels: [String] = [],
+        addReviewers: [String] = [], addAssignees: [String] = [],
+        markReady: Bool = false
+    ) async throws {
+        var args = ["pr", "edit", "\(number)", "--repo", "\(owner)/\(repo)"]
+        if let title { args.append(contentsOf: ["--title", title]) }
+        if !addLabels.isEmpty { args.append(contentsOf: ["--add-label", addLabels.joined(separator: ",")]) }
+        if !removeLabels.isEmpty { args.append(contentsOf: ["--remove-label", removeLabels.joined(separator: ",")]) }
+        if !addReviewers.isEmpty { args.append(contentsOf: ["--add-reviewer", addReviewers.joined(separator: ",")]) }
+        if !addAssignees.isEmpty { args.append(contentsOf: ["--add-assignee", addAssignees.joined(separator: ",")]) }
+        if let body, !body.isEmpty {
+            args.append(contentsOf: ["--body-file", "-"])
+            _ = try await runner.run(args, stdin: Data(body.utf8))
+        } else {
+            _ = try await runner.run(args)
+        }
+        if markReady {
+            _ = try await runner.run(["pr", "ready", "\(number)", "--repo", "\(owner)/\(repo)"])
+        }
+    }
+
+    public func closePR(owner: String, repo: String, number: Int) async throws {
+        _ = try await runner.run(["pr", "close", "\(number)", "--repo", "\(owner)/\(repo)"])
+    }
+
+    public func commentOnPR(owner: String, repo: String, number: Int, body: String) async throws {
+        _ = try await runner.run(
+            ["pr", "comment", "\(number)", "--repo", "\(owner)/\(repo)", "--body-file", "-"],
+            stdin: Data(body.utf8)
+        )
+    }
+
+    // MARK: - Labels
+
+    public func labels(owner: String, repo: String) async throws -> [GHLabel] {
+        try await runner.runJSON([
+            "label", "list", "--repo", "\(owner)/\(repo)",
+            "--json", "name,color,description"
+        ])
+    }
+
+    public func createLabel(
+        owner: String, repo: String,
+        name: String, color: String? = nil, description: String? = nil
+    ) async throws {
+        var args = ["label", "create", name, "--repo", "\(owner)/\(repo)"]
+        if let color { args.append(contentsOf: ["--color", color]) }
+        if let description { args.append(contentsOf: ["--description", description]) }
+        _ = try await runner.run(args)
+    }
+
+    // MARK: - Workflow runs
+
+    public func workflowRuns(owner: String, repo: String, limit: Int = 20) async throws -> [GHWorkflowRun] {
+        try await runner.runJSON([
+            "run", "list", "--repo", "\(owner)/\(repo)",
+            "--limit", "\(limit)",
+            "--json", "databaseId,displayTitle,event,headBranch,status,conclusion,url,createdAt"
+        ])
+    }
+
+    public func dispatchWorkflow(
+        owner: String, repo: String, workflow: String,
+        ref: String, inputs: [String: String] = [:]
+    ) async throws {
+        var args = [
+            "workflow", "run", workflow,
+            "--repo", "\(owner)/\(repo)",
+            "--ref", ref
+        ]
+        for (k, v) in inputs {
+            args.append(contentsOf: ["-f", "\(k)=\(v)"])
+        }
+        _ = try await runner.run(args)
+    }
+
+    public func cancelRun(owner: String, repo: String, runId: Int64) async throws {
+        _ = try await runner.run(["run", "cancel", "\(runId)", "--repo", "\(owner)/\(repo)"])
+    }
+
+    public func rerunRun(owner: String, repo: String, runId: Int64) async throws {
+        _ = try await runner.run(["run", "rerun", "\(runId)", "--repo", "\(owner)/\(repo)"])
+    }
+
+    // MARK: - Branches
+
+    public func createBranch(
+        owner: String, repo: String, branch: String, fromSha: String
+    ) async throws {
+        _ = try await runner.run([
+            "api", "-X", "POST",
+            "repos/\(owner)/\(repo)/git/refs",
+            "-f", "ref=refs/heads/\(branch)",
+            "-f", "sha=\(fromSha)"
+        ])
+    }
+
+    public func deleteBranch(owner: String, repo: String, branch: String) async throws {
+        _ = try await runner.run([
+            "api", "-X", "DELETE",
+            "repos/\(owner)/\(repo)/git/refs/heads/\(branch)"
+        ])
+    }
+
     // MARK: - Reviews & checks
 
     public func reviewComments(

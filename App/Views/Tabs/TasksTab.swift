@@ -15,6 +15,7 @@ struct TasksTab: View {
     @State private var pendingTask: WrikeTask?
     @State private var initialPrompt: String = ""
     @State private var starting = false
+    @State private var showNewTask = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,6 +36,9 @@ struct TasksTab: View {
                 Spacer()
                 if let folder = project.wrikeFolderId {
                     Pill(text: folder, systemImage: "folder.badge.gearshape", tint: Palette.cyan)
+                }
+                IconButton(systemImage: "plus.circle", help: "New Wrike task") {
+                    showNewTask = true
                 }
                 IconButton(systemImage: "arrow.clockwise", help: "Refresh tasks") {
                     Task { await load() }
@@ -96,6 +100,11 @@ struct TasksTab: View {
                     starting: $starting,
                     onConfirm: { await startSession(for: task) }
                 )
+            }
+            .sheet(isPresented: $showNewTask) {
+                if let project {
+                    NewWrikeTaskSheet(project: project).environmentObject(env)
+                }
             }
         }
     }

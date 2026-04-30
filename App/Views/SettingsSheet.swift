@@ -29,6 +29,8 @@ struct SettingsSheet: View {
                 .tabItem { Label("iPhone", systemImage: "iphone.gen3") }
             apnsTab
                 .tabItem { Label("Push", systemImage: "bell.badge") }
+            aiTab
+                .tabItem { Label("AI", systemImage: "sparkles") }
             diagnosticsTab
                 .tabItem { Label("Diagnostics", systemImage: "stethoscope") }
             activityTab
@@ -243,6 +245,74 @@ struct SettingsSheet: View {
     private var activityTab: some View {
         ActivityFeedView()
             .environmentObject(env)
+    }
+
+    @State private var llmKey: String = ""
+    @State private var llmKeyStored: Bool = false
+    @State private var llmModel: String = "claude-sonnet-4-6"
+    @State private var llmEnabled: Bool = false
+    @State private var llmMaxTokens: Int = 1024
+
+    private var aiTab: some View {
+        Form {
+            Section("Anthropic API") {
+                if llmKeyStored {
+                    HStack {
+                        Image(systemName: "key.fill").foregroundStyle(Palette.green)
+                        Text("API key stored in Keychain")
+                        Spacer()
+                        Button("Replace") { llmKeyStored = false; llmKey = "" }
+                        Button("Remove", role: .destructive) {
+                            env.llm.removeKey()
+                            llmKeyStored = false
+                        }
+                    }
+                } else {
+                    SecureField("API key (sk-ant-…)", text: $llmKey)
+                    Button("Save key") {
+                        do {
+                            try env.llm.setKey(llmKey)
+                            llmKeyStored = true
+                            llmKey = ""
+                        } catch {
+                            self.error = "\(error)"
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(llmKey.isEmpty)
+                }
+            }
+            Section("Drafting") {
+                TextField("Model", text: $llmModel)
+                Stepper("Max tokens: \(llmMaxTokens)", value: $llmMaxTokens, in: 256...4096, step: 256)
+                Toggle("Enable AI assist", isOn: $llmEnabled)
+            }
+            Section {
+                Button("Save AI settings") { saveAI() }
+                    .keyboardShortcut(.defaultAction)
+            } footer: {
+                Text("Powers ✨ buttons in the New Session, New Wrike Task, and PR-create flows. Used to draft titles and descriptions; never sent your code unless you click Draft.")
+                    .font(Type.caption).foregroundStyle(Palette.fgMuted)
+            }
+        }
+        .formStyle(.grouped)
+        .task { reloadAI() }
+    }
+
+    private func reloadAI() {
+        let cfg = env.llm.config
+        llmModel = cfg.model
+        llmMaxTokens = cfg.maxTokens
+        llmEnabled = cfg.enabled
+        llmKeyStored = env.llm.hasKey()
+    }
+
+    private func saveAI() {
+        var cfg = env.llm.config
+        cfg.model = llmModel
+        cfg.maxTokens = llmMaxTokens
+        cfg.enabled = llmEnabled
+        env.llm.saveConfig(cfg)
     }
 
     @State private var apnsTeamId = ""

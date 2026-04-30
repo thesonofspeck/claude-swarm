@@ -70,6 +70,60 @@ public actor WrikeClient {
         try await put(path: "tasks/\(taskId)", form: ["customStatus": customStatusId]).first
     }
 
+    // MARK: - Tasks (full CRUD)
+
+    public func createTask(in folderId: String, mutation: WrikeTaskMutation) async throws -> WrikeTask? {
+        try await sendJSON(method: "POST", path: "folders/\(folderId)/tasks", body: mutation).first
+    }
+
+    public func updateTask(id: String, mutation: WrikeTaskMutation) async throws -> WrikeTask? {
+        try await sendJSON(method: "PUT", path: "tasks/\(id)", body: mutation).first
+    }
+
+    public func deleteTask(id: String) async throws {
+        _ = try await sendVoid(method: "DELETE", path: "tasks/\(id)")
+    }
+
+    // MARK: - Comments
+
+    public func comments(taskId: String, limit: Int = 100) async throws -> [WrikeComment] {
+        try await getList(path: "tasks/\(taskId)/comments", query: ["limit": "\(limit)"])
+    }
+
+    @discardableResult
+    public func createComment(taskId: String, text: String, plainText: Bool = false) async throws -> WrikeComment? {
+        var form: [String: String] = ["text": text]
+        if plainText { form["plainText"] = "true" }
+        return try await send(method: "POST", path: "tasks/\(taskId)/comments", form: form).first
+    }
+
+    public func deleteComment(id: String) async throws {
+        _ = try await sendVoid(method: "DELETE", path: "comments/\(id)")
+    }
+
+    // MARK: - Attachments
+
+    public func attachments(taskId: String) async throws -> [WrikeAttachment] {
+        try await getList(path: "tasks/\(taskId)/attachments")
+    }
+
+    @discardableResult
+    public func attachURL(taskId: String, url: String, name: String?) async throws -> WrikeAttachment? {
+        var form: [String: String] = ["url": url]
+        if let name { form["name"] = name }
+        return try await send(method: "POST", path: "tasks/\(taskId)/attachments", form: form).first
+    }
+
+    // MARK: - Users
+
+    public func currentUser() async throws -> WrikeUser? {
+        try await getList(path: "contacts", query: ["me": "true"]).first
+    }
+
+    public func users() async throws -> [WrikeUser] {
+        try await getList(path: "contacts")
+    }
+
     // MARK: - HTTP plumbing
 
     private func put<T: Decodable>(path: String, form: [String: String]) async throws -> [T] {
@@ -80,11 +134,27 @@ public actor WrikeClient {
         try await send(method: "GET", path: path, query: query)
     }
 
+    private func sendJSON<T: Decodable, Body: Encodable>(
+        method: String, path: String, body: Body
+    ) async throws -> [T] {
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(body)
+        return try await send(method: method, path: path, jsonBody: data)
+    }
+
+    @discardableResult
+    private func sendVoid(method: String, path: String) async throws -> Bool {
+        struct Empty: Decodable {}
+        let _: [Empty] = try await send(method: method, path: path)
+        return true
+    }
+
     private func send<T: Decodable>(
         method: String,
         path: String,
         query: [String: String] = [:],
-        form: [String: String] = [:]
+        form: [String: String] = [:],
+        jsonBody: Data? = nil
     ) async throws -> [T] {
         let token: String
         do { token = try keychain.get(account: KeychainAccount.wrike) }
@@ -104,7 +174,10 @@ public actor WrikeClient {
         req.httpMethod = method
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
-        if !form.isEmpty {
+        if let jsonBody {
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = jsonBody
+        } else if !form.isEmpty {
             req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
             let body = form.map { key, value -> String in
                 let k = key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? key

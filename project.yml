@@ -33,6 +33,7 @@ packages:
   ToolDetector:      { path: Packages/ToolDetector }
   BrewInstaller:     { path: Packages/BrewInstaller }
   LibraryKit:        { path: Packages/LibraryKit }
+  AnthropicClient:   { path: Packages/AnthropicClient }
 
 targets:
   ClaudeSwarm:
@@ -100,6 +101,8 @@ targets:
         product: BrewInstaller
       - package: LibraryKit
         product: LibraryKit
+      - package: AnthropicClient
+        product: AnthropicClient
 
   swarm-memory-mcp:
     type: tool

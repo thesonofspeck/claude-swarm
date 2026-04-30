@@ -94,3 +94,35 @@ public struct GHRepoSummary: Codable, Equatable, Identifiable, Sendable {
 
     public var id: String { nameWithOwner }
 }
+
+public struct GHIssue: Codable, Equatable, Identifiable, Sendable {
+    public let number: Int
+    public let title: String
+    public let body: String?
+    public let state: String
+    public let url: String
+    public let author: GHUser?
+    public let labels: [GHLabel]?
+
+    public var id: Int { number }
+}
+
+public struct GHLabel: Codable, Equatable, Identifiable, Sendable {
+    public let name: String
+    public let color: String?
+    public let description: String?
+    public var id: String { name }
+}
+
+public struct GHWorkflowRun: Codable, Equatable, Identifiable, Sendable {
+    public let databaseId: Int64
+    public let displayTitle: String?
+    public let event: String?
+    public let headBranch: String?
+    public let status: String?
+    public let conclusion: String?
+    public let url: String?
+    public let createdAt: Date?
+
+    public var id: Int64 { databaseId }
+}

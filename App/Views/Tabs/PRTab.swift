@@ -2,6 +2,7 @@ import SwiftUI
 import AppCore
 import PersistenceKit
 import GitHubKit
+import GitKit
 
 struct PRTab: View {
     @EnvironmentObject var env: AppEnvironment
@@ -17,6 +18,7 @@ struct PRTab: View {
     @State private var creating = false
     @State private var prTitle: String = ""
     @State private var prBody: String = ""
+    @State private var drafting: Bool = false
     @State private var replyDrafts: [Int64: String] = [:]
     @State private var posting: Set<Int64> = []
     @State private var resolvedRoots: Set<Int64> = []
@@ -43,6 +45,19 @@ struct PRTab: View {
                     .font(Type.title)
                     .foregroundStyle(Palette.fgBright)
                 Spacer()
+                Button {
+                    Task { await draftFromDiff() }
+                } label: {
+                    if drafting {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("Draft", systemImage: "sparkles")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!env.llm.isUsable || drafting)
+                .help(env.llm.isUsable ? "Draft title + body from the working-tree diff" : "Configure the Anthropic API key in Settings → AI to enable")
                 IconButton(systemImage: "arrow.clockwise", help: "Refresh") {
                     Task { await load() }
                 }
@@ -431,5 +446,51 @@ struct PRTab: View {
                 creating = false
             }
         }
+    }
+
+    private func draftFromDiff() async {
+        await MainActor.run { drafting = true; error = nil }
+        do {
+            let dir = URL(fileURLWithPath: session.worktreePath)
+            let files = (try? await env.diff.workingTreeDiff(in: dir)) ?? []
+            let diffText = renderDiff(files)
+            let draft = try await env.llm.draftPR(
+                diff: diffText,
+                taskTitle: session.taskTitle,
+                taskBody: nil
+            )
+            await MainActor.run {
+                prTitle = draft.title
+                prBody = draft.body
+                drafting = false
+            }
+        } catch {
+            await MainActor.run {
+                self.error = "Couldn't draft: \(error.localizedDescription)"
+                drafting = false
+            }
+        }
+    }
+
+    /// Render parsed diff back into a unified-diff-ish string the LLM can
+    /// reason about. Truncated at 8000 chars later by the helper.
+    private func renderDiff(_ files: [DiffFile]) -> String {
+        var out = ""
+        for file in files {
+            out += "diff --git a/\(file.oldPath ?? "") b/\(file.newPath ?? "")\n"
+            for hunk in file.hunks {
+                out += "\(hunk.header)\n"
+                for line in hunk.lines {
+                    let prefix: String
+                    switch line.kind {
+                    case .addition: prefix = "+"
+                    case .deletion: prefix = "-"
+                    default: prefix = " "
+                    }
+                    out += "\(prefix)\(line.text)\n"
+                }
+            }
+        }
+        return out
     }
 }

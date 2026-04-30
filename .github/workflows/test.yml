@@ -31,6 +31,7 @@ jobs:
           - SleepGuard
           - ToolDetector
           - LibraryKit
+          - AnthropicClient
     steps:
       - uses: actions/checkout@v4
 
