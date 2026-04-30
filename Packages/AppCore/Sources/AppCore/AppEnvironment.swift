@@ -31,6 +31,7 @@ public final class AppEnvironment: ObservableObject {
     public let wrikeBridge: WrikeBridge
     public let remote: RemoteCoordinator
     public let library: LibraryStore
+    public let activity: ActivityLog
 
     @Published public var settings: AppSettings
     @Published public var lastError: String?
@@ -89,6 +90,7 @@ public final class AppEnvironment: ObservableObject {
         let libraryCache = AppDirectories.supportRoot.appendingPathComponent("library-cache", isDirectory: true)
         let libSource = TeamLibrarySource(cacheRoot: libraryCache)
         self.library = LibraryStore(teamSource: libSource)
+        self.activity = ActivityLog(db: db)
         let remoteRef = self.remote
         let projectsRef = self.projects
         remote.onSendInput = { sessionId, text in
@@ -136,12 +138,20 @@ public final class AppEnvironment: ObservableObject {
             await indexer.reindexAll()
         }
 
+        let activityRef = self.activity
         let server = HookSocketServer(socketURL: AppDirectories.hooksSocket) { [weak notifier, weak remoteRef] event in
             Task { @MainActor in
                 guard let id = event.sessionId else { return }
                 if let status = event.resultingStatus {
                     try? repoRef.setStatus(id: id, status)
                 }
+                let session = try? repoRef.find(id: id)
+                try? activityRef.append(ActivityEvent(
+                    sessionId: id,
+                    projectId: session?.projectId,
+                    kind: event.kind.rawValue,
+                    message: event.message
+                ))
                 if event.kind == .notification {
                     let isForeground = (registryRef.foregroundSessionId == id)
                     notifier?.sessionNeedsInput(

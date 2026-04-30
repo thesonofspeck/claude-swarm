@@ -7,7 +7,7 @@ import TerminalUI
 import SessionCore
 
 enum DetailTab: String, CaseIterable, Identifiable {
-    case terminal, files, diff, history, pr, tasks, memory, agents, library, policy, transcript
+    case terminal, files, diff, history, pr, tasks, memory, agents, library, policy, claudeMd, transcript
     var id: String { rawValue }
 
     var label: String {
@@ -22,6 +22,7 @@ enum DetailTab: String, CaseIterable, Identifiable {
         case .agents: return "Agents"
         case .library: return "Library"
         case .policy: return "Policy"
+        case .claudeMd: return "CLAUDE.md"
         case .transcript: return "Transcript"
         }
     }
@@ -38,6 +39,7 @@ enum DetailTab: String, CaseIterable, Identifiable {
         case .agents: return "person.3"
         case .library: return "books.vertical"
         case .policy: return "shield.lefthalf.filled"
+        case .claudeMd: return "doc.text"
         case .transcript: return "text.alignleft"
         }
     }
@@ -102,6 +104,7 @@ struct DetailView: View {
             case .agents: AgentsTab(project: project)
             case .library: LibraryTab(project: project)
             case .policy: PolicyTab(project: project)
+            case .claudeMd: ClaudeMdTab(project: project)
             case .transcript: TranscriptTab(session: session)
             }
         } else {

@@ -59,5 +59,17 @@ public enum Schema {
                 t.column("fetchedAt", .datetime).notNull()
             }
         }
+
+        migrator.registerMigration("v2_activity") { db in
+            try db.create(table: "activity") { t in
+                t.column("id", .text).primaryKey()
+                t.column("timestamp", .datetime).notNull()
+                t.column("sessionId", .text)
+                t.column("projectId", .text)
+                t.column("kind", .text).notNull()
+                t.column("message", .text)
+            }
+            try db.create(index: "idx_activity_timestamp", on: "activity", columns: ["timestamp"])
+        }
     }
 }

@@ -77,6 +77,17 @@ docs/
    threads without leaving.
 6. **Merge** — when GitHub reports `merged`, Wrike auto-transitions to "Done."
 
+## Team library
+
+Every teammate's Mac can pull a shared library of agents, skills, slash
+commands, MCP servers, hooks, and a CLAUDE.md template from one place —
+either a git repo or a local folder. Library detail tab inside any
+project lets you install / uninstall / sync per item; the lock file
+tells you when the team has updated something.
+
+See [`docs/team-library.md`](docs/team-library.md) for the manifest
+schema and a quick-start to bootstrap your team's library.
+
 ## Default agent team
 
 Bootstrapped into every project's `.claude/agents/`:

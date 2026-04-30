@@ -31,6 +31,8 @@ struct SettingsSheet: View {
                 .tabItem { Label("Push", systemImage: "bell.badge") }
             diagnosticsTab
                 .tabItem { Label("Diagnostics", systemImage: "stethoscope") }
+            activityTab
+                .tabItem { Label("Activity", systemImage: "bolt.heart") }
         }
         .padding()
         .frame(width: 620, height: 540)
@@ -235,6 +237,11 @@ struct SettingsSheet: View {
 
     private var diagnosticsTab: some View {
         DiagnosticsView()
+            .environmentObject(env)
+    }
+
+    private var activityTab: some View {
+        ActivityFeedView()
             .environmentObject(env)
     }
 
