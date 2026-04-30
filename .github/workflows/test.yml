@@ -12,7 +12,7 @@ concurrency:
 jobs:
   swift-test:
     name: swift test (${{ matrix.package }})
-    runs-on: macos-14
+    runs-on: macos-26
     strategy:
       fail-fast: false
       matrix:
@@ -47,7 +47,7 @@ jobs:
 
   build-app:
     name: Build app (xcodebuild)
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
