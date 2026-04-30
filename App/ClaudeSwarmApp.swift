@@ -68,6 +68,29 @@ struct ClaudeSwarmApp: App {
                 .environmentObject(env)
                 .tint(Palette.blue)
         }
+
+        MenuBarExtra {
+            MenuBarStatusView()
+                .environmentObject(env)
+                .environmentObject(env.notifier)
+                .environmentObject(env.projectList)
+        } label: {
+            MenuBarLabel()
+                .environmentObject(env.notifier)
+        }
+        .menuBarExtraStyle(.window)
+    }
+}
+
+private struct MenuBarLabel: View {
+    @EnvironmentObject var notifier: Notifier
+    var body: some View {
+        let n = notifier.pendingSessionIds.count
+        if n > 0 {
+            Image(systemName: "\(n).circle.fill")
+        } else {
+            Image(systemName: "sparkles.rectangle.stack")
+        }
     }
 }
 

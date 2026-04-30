@@ -1,0 +1,91 @@
+name: ClaudeSwarm
+options:
+  bundleIdPrefix: com.claudeswarm
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+packages:
+  AppCore:           { path: Packages/AppCore }
+  SessionCore:       { path: Packages/SessionCore }
+  TerminalUI:        { path: Packages/TerminalUI }
+  GitKit:            { path: Packages/GitKit }
+  DiffViewer:        { path: Packages/DiffViewer }
+  WrikeKit:          { path: Packages/WrikeKit }
+  GitHubKit:         { path: Packages/GitHubKit }
+  PersistenceKit:    { path: Packages/PersistenceKit }
+  KeychainKit:       { path: Packages/KeychainKit }
+  MemoryService:     { path: Packages/MemoryService }
+  NotificationCenter: { path: Packages/NotificationCenter }
+  AgentBootstrap:    { path: Packages/AgentBootstrap }
+
+targets:
+  ClaudeSwarm:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+    resources:
+      - path: App/Resources/Assets.xcassets
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleName: Claude Swarm
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSApplicationCategoryType: public.app-category.developer-tools
+        NSUserNotificationsUsageDescription: "Claude Swarm posts notifications when sessions are waiting for your input."
+    entitlements:
+      path: App/ClaudeSwarm.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.claudeswarm.app
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_ENTITLEMENTS: App/ClaudeSwarm.entitlements
+    dependencies:
+      - package: AppCore
+        product: AppCore
+      - package: SessionCore
+        product: SessionCore
+      - package: TerminalUI
+        product: TerminalUI
+      - package: GitKit
+        product: GitKit
+      - package: DiffViewer
+        product: DiffViewer
+      - package: WrikeKit
+        product: WrikeKit
+      - package: GitHubKit
+        product: GitHubKit
+      - package: PersistenceKit
+        product: PersistenceKit
+      - package: KeychainKit
+        product: KeychainKit
+      - package: MemoryService
+        product: MemoryService
+      - package: NotificationCenter
+        product: ClaudeSwarmNotifications
+      - package: AgentBootstrap
+        product: AgentBootstrap
+
+  swarm-memory-mcp:
+    type: tool
+    platform: macOS
+    dependencies:
+      - package: MemoryService
+        product: swarm-memory-mcp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.claudeswarm.memory-mcp

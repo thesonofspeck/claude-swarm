@@ -1,0 +1,65 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift-test:
+    name: swift test (${{ matrix.package }})
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - KeychainKit
+          - PersistenceKit
+          - GitKit
+          - WrikeKit
+          - GitHubKit
+          - MemoryService
+          - SessionCore
+          - AgentBootstrap
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Resolve dependencies
+        working-directory: Packages/${{ matrix.package }}
+        run: swift package resolve
+
+      - name: Run tests
+        working-directory: Packages/${{ matrix.package }}
+        run: swift test --parallel
+
+  build-app:
+    name: Build app (xcodebuild)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ClaudeSwarm.xcodeproj \
+            -scheme ClaudeSwarm \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build | xcbeautify || true

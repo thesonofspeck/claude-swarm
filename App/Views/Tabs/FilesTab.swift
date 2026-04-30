@@ -16,6 +16,7 @@ struct FilesTab: View {
     @State private var loadingFile = false
     @State private var error: String?
     @State private var watcher: FileWatcher?
+    @State private var quickLookURL: URL?
 
     private var isSwift: Bool { fileExtension == "swift" }
 
@@ -36,6 +37,15 @@ struct FilesTab: View {
             startWatching()
         }
         .onDisappear { watcher?.stop(); watcher = nil }
+        .background(QuickLookPreview(url: $quickLookURL))
+        .focusable()
+        .onKeyPress(.space) {
+            if let id = selection, let node = find(id, in: entries), !node.isDirectory {
+                quickLookURL = (quickLookURL == nil) ? node.url : nil
+                return .handled
+            }
+            return .ignored
+        }
     }
 
     private func startWatching() {
