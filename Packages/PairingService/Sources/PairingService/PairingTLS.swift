@@ -1,5 +1,5 @@
 import Foundation
-import Security
+@preconcurrency import Security
 import CryptoKit
 import os
 

@@ -16,7 +16,6 @@ let package = Package(
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift")
             ]
-        ),
-        .testTarget(name: "PersistenceKitTests", dependencies: ["PersistenceKit"])
+        )
     ]
 )

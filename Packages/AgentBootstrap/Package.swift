@@ -11,7 +11,7 @@ let package = Package(
         .target(
             name: "AgentBootstrap",
             resources: [
-                .process("Resources")
+                .copy("Resources")
             ]
         ),
         .testTarget(name: "AgentBootstrapTests", dependencies: ["AgentBootstrap"])

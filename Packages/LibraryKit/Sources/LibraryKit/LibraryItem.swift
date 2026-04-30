@@ -62,6 +62,21 @@ public struct LibraryItem: Codable, Equatable, Identifiable, Hashable, Sendable 
         self.version = version
         self.tags = tags
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, name, description, path, version, tags
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        kind = try c.decode(LibraryItemKind.self, forKey: .kind)
+        name = try c.decode(String.self, forKey: .name)
+        description = try c.decodeIfPresent(String.self, forKey: .description)
+        path = try c.decode(String.self, forKey: .path)
+        version = try c.decodeIfPresent(String.self, forKey: .version)
+        tags = (try? c.decode([String].self, forKey: .tags)) ?? []
+    }
 }
 
 public struct LibraryManifest: Codable, Equatable, Sendable {

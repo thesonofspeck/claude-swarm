@@ -18,7 +18,6 @@ jobs:
       matrix:
         package:
           - KeychainKit
-          - PersistenceKit
           - GitKit
           - WrikeKit
           - GitHubKit
