@@ -21,6 +21,10 @@ final class InstallerTests: XCTestCase {
             let path = temp.appendingPathComponent(".claude/agents/\(name).md")
             XCTAssertTrue(FileManager.default.fileExists(atPath: path.path), "Missing agent: \(name)")
         }
+        for name in BootstrapResources.bundledSkillNames {
+            let path = temp.appendingPathComponent(".claude/skills/\(name).md")
+            XCTAssertTrue(FileManager.default.fileExists(atPath: path.path), "Missing skill: \(name)")
+        }
         let settings = temp.appendingPathComponent(".claude/settings.json")
         XCTAssertTrue(FileManager.default.fileExists(atPath: settings.path))
 

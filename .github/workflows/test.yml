@@ -31,7 +31,6 @@ jobs:
           - SleepGuard
           - ToolDetector
           - LibraryKit
-          - AnthropicClient
           - AtomPalette
     steps:
       - uses: actions/checkout@v4

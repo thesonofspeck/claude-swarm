@@ -1,55 +1,55 @@
 import Foundation
-import KeychainKit
-import AnthropicClient
+import AgentBootstrap
 
-/// Drafts UI text from sparse hints. Wraps AnthropicClient with prompts
-/// tuned for the specific drafting jobs the app needs:
-/// - Wrike task title + description from a one-liner
-/// - PR title + body from a working-tree diff + linked task
-/// - Conversational reply / status comment from current session context
+/// Drafts UI text from sparse hints by shelling out to the Claude Code
+/// CLI in non-interactive mode (`claude -p`). This sidesteps API tokens
+/// (the user's `claude` CLI already has whatever auth they signed in
+/// with) and lets the project's bundled skills define how Wrike tasks
+/// and PR descriptions should look.
 @MainActor
 public final class LLMHelper: ObservableObject {
-    @Published public var config: AnthropicConfig
+    public struct Config: Codable, Equatable, Sendable {
+        public var enabled: Bool
+        public var maxTimeoutSeconds: Int
+
+        public init(enabled: Bool = false, maxTimeoutSeconds: Int = 60) {
+            self.enabled = enabled
+            self.maxTimeoutSeconds = maxTimeoutSeconds
+        }
+    }
+
+    @Published public var config: Config
 
     private let configURL: URL
-    private let keychain: Keychain
-    private var client: AnthropicClient
+    private let claudeExecutableProvider: () -> String
+    private let projectRootProvider: () -> URL?
 
-    public init(config: AnthropicConfig? = nil, keychain: Keychain = Keychain()) {
-        self.keychain = keychain
-        let url = AppDirectories.supportRoot.appendingPathComponent("anthropic.json")
+    public init(
+        config: Config? = nil,
+        claudeExecutable: @escaping () -> String,
+        projectRoot: @escaping () -> URL? = { nil }
+    ) {
+        let url = AppDirectories.supportRoot.appendingPathComponent("ai.json")
         self.configURL = url
         if let config {
             self.config = config
         } else if let data = try? Data(contentsOf: url),
-                  let decoded = try? JSONDecoder().decode(AnthropicConfig.self, from: data) {
+                  let decoded = try? JSONDecoder().decode(Config.self, from: data) {
             self.config = decoded
         } else {
-            self.config = AnthropicConfig()
+            self.config = Config()
         }
-        self.client = AnthropicClient(config: self.config, keychain: keychain)
+        self.claudeExecutableProvider = claudeExecutable
+        self.projectRootProvider = projectRoot
     }
 
-    public func saveConfig(_ cfg: AnthropicConfig) {
+    public func saveConfig(_ cfg: Config) {
         config = cfg
-        client = AnthropicClient(config: cfg, keychain: keychain)
         try? JSONEncoder().encode(cfg).write(to: configURL, options: .atomic)
     }
 
-    public func setKey(_ key: String) throws {
-        try keychain.set(key, account: KeychainAccount.anthropic)
-    }
-
-    public func removeKey() {
-        try? keychain.remove(account: KeychainAccount.anthropic)
-    }
-
-    public func hasKey() -> Bool {
-        (try? keychain.get(account: KeychainAccount.anthropic)) != nil
-    }
-
     public var isUsable: Bool {
-        config.enabled && hasKey()
+        config.enabled && FileManager.default.isExecutableFile(atPath: claudeExecutableProvider())
     }
 
     // MARK: - Drafting
@@ -59,108 +59,28 @@ public final class LLMHelper: ObservableObject {
         public var description: String
     }
 
-    public func draftWrikeTask(from hint: String, projectContext: String? = nil) async throws -> WrikeTaskDraft {
-        let system = """
-            You draft Wrike tasks. The user gives you a one-line hint.
-            Reply ONLY with this exact format:
-
-            TITLE: <a single concise sentence, ≤ 60 chars>
-
-            DESCRIPTION:
-            ## Outcome
-            <one paragraph: what "done" looks like>
-            ## Steps
-            - <bulleted concrete steps>
-            ## Acceptance
-            - <bulleted, testable>
-
-            No prose around the format. No code fences.
-            """
-        var user = "Hint: \(hint)"
-        if let projectContext, !projectContext.isEmpty {
-            user += "\n\nProject context: \(projectContext)"
-        }
-        let response = try await client.complete(
-            system: system,
-            messages: [AnthropicMessage(role: .user, content: user)]
-        )
-        return parseTaskDraft(response, fallbackTitle: hint)
-    }
-
     public struct PRDraft: Sendable {
         public var title: String
         public var body: String
     }
 
-    public func draftPR(diff: String, taskTitle: String?, taskBody: String?) async throws -> PRDraft {
-        let system = """
-            You draft GitHub pull request titles and bodies. Reply ONLY in this format:
-
-            TITLE: <≤ 70 chars, conventional-commits style if appropriate>
-
-            BODY:
-            ## Summary
-            - <bullets, concrete>
-
-            ## Test plan
-            - [ ] <bullets a reviewer would tick>
-
-            No prose around the format. No code fences around the body.
-            """
-        let sanitized = LLMHelper.sanitizeDiff(diff)
-        var user = "Working-tree diff (truncated to 8000 chars):\n\n\(String(sanitized.prefix(8000)))"
-        if let taskTitle { user += "\n\nLinked Wrike task title: \(taskTitle)" }
-        if let taskBody { user += "\n\nLinked Wrike task description:\n\(String(taskBody.prefix(2000)))" }
-        let response = try await client.complete(
-            system: system,
-            messages: [AnthropicMessage(role: .user, content: user)]
-        )
-        return parsePRDraft(response, fallbackTitle: taskTitle ?? "")
+    public func draftWrikeTask(from hint: String, projectContext: String? = nil) async throws -> WrikeTaskDraft {
+        let skill = try loadSkill(named: "wrike-task-drafter")
+        var prompt = "Hint: \(hint)"
+        if let projectContext, !projectContext.isEmpty {
+            prompt += "\n\nProject context: \(projectContext)"
+        }
+        let response = try await runClaudePrint(prompt: prompt, systemAppend: skill)
+        return parseTaskDraft(response, fallbackTitle: hint)
     }
 
-    /// Strip diff hunks for files that almost certainly contain secrets so
-    /// they don't reach Anthropic. Files matched by name are replaced with
-    /// a one-line placeholder; lines matching common secret patterns
-    /// (KEY=…, BEGIN PRIVATE KEY, etc.) inside other files are redacted.
-    static func sanitizeDiff(_ diff: String) -> String {
-        let secretFilenamePatterns = [
-            "(^|/)\\.env(\\.[a-zA-Z0-9_-]+)?$",
-            "(^|/)id_(rsa|ed25519|ecdsa|dsa)$",
-            "\\.(pem|key|pfx|p12|p8)$",
-            "(^|/)credentials(\\.json)?$",
-            "(^|/)secrets?(\\.(yaml|yml|json|toml))?$"
-        ]
-        let secretLinePatterns = [
-            "BEGIN [A-Z ]*PRIVATE KEY",
-            "(?i)(api[_-]?key|secret|token|password|passwd)\\s*[=:]\\s*[\"']?[A-Za-z0-9_+/=\\-]{8,}",
-            "(?i)bearer\\s+[A-Za-z0-9_\\-]{16,}"
-        ]
-
-        var output: [String] = []
-        var skipFile = false
-        for raw in diff.split(separator: "\n", omittingEmptySubsequences: false) {
-            let line = String(raw)
-            if line.hasPrefix("diff --git") {
-                skipFile = secretFilenamePatterns.contains { pattern in
-                    line.range(of: pattern, options: .regularExpression) != nil
-                }
-                if skipFile {
-                    output.append(line)
-                    output.append("[redacted: file likely contains secrets]")
-                } else {
-                    output.append(line)
-                }
-                continue
-            }
-            if skipFile { continue }
-            if (line.hasPrefix("+") || line.hasPrefix("-")),
-               secretLinePatterns.contains(where: { line.range(of: $0, options: .regularExpression) != nil }) {
-                output.append(String(line.first!) + " [redacted: looks like a secret]")
-                continue
-            }
-            output.append(line)
-        }
-        return output.joined(separator: "\n")
+    public func draftPR(diff: String, taskTitle: String?, taskBody: String?) async throws -> PRDraft {
+        let skill = try loadSkill(named: "pr-drafter")
+        var prompt = "Working-tree diff (truncated to 8000 chars):\n\n\(String(diff.prefix(8000)))"
+        if let taskTitle { prompt += "\n\nLinked Wrike task title: \(taskTitle)" }
+        if let taskBody  { prompt += "\n\nLinked Wrike task description:\n\(String(taskBody.prefix(2000)))" }
+        let response = try await runClaudePrint(prompt: prompt, systemAppend: skill)
+        return parsePRDraft(response, fallbackTitle: taskTitle ?? "")
     }
 
     public func draftSessionPrompt(from hint: String, projectName: String?) async throws -> String {
@@ -172,12 +92,9 @@ public final class LLMHelper: ObservableObject {
             3. Call out any non-obvious constraints.
             Don't add commentary or formatting — just the prompt.
             """
-        var user = "Hint: \(hint)"
-        if let projectName { user += "\nProject: \(projectName)" }
-        return try await client.complete(
-            system: system,
-            messages: [AnthropicMessage(role: .user, content: user)]
-        )
+        var prompt = "Hint: \(hint)"
+        if let projectName { prompt += "\nProject: \(projectName)" }
+        return try await runClaudePrint(prompt: prompt, systemAppend: system)
     }
 
     public func draftStatusComment(diffSummary: String, sessionTitle: String?) async throws -> String {
@@ -186,15 +103,103 @@ public final class LLMHelper: ObservableObject {
             an autonomous coding agent did. Plain language, ≤ 4 sentences,
             past tense. Do not include code fences or links.
             """
-        var user = "Diff summary:\n\n\(diffSummary.prefix(4000))"
-        if let sessionTitle { user += "\n\nSession: \(sessionTitle)" }
-        return try await client.complete(
-            system: system,
-            messages: [AnthropicMessage(role: .user, content: user)]
-        )
+        var prompt = "Diff summary:\n\n\(diffSummary.prefix(4000))"
+        if let sessionTitle { prompt += "\n\nSession: \(sessionTitle)" }
+        return try await runClaudePrint(prompt: prompt, systemAppend: system)
     }
 
-    // MARK: - Parsers
+    // MARK: - Skill loading
+
+    /// Resolve the skill content for `name`, preferring the active
+    /// project's `.claude/skills/<name>.md` when present so teams can
+    /// override the defaults via the team library.
+    private func loadSkill(named name: String) throws -> String {
+        if let projectRoot = projectRootProvider() {
+            let projectSkill = AgentLayout.skillFile(in: projectRoot, name: name)
+            if let data = try? Data(contentsOf: projectSkill),
+               let text = String(data: data, encoding: .utf8) {
+                return text
+            }
+        }
+        let url = try BootstrapResources.skillTemplate(name)
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    // MARK: - Subprocess
+
+    private func runClaudePrint(prompt: String, systemAppend: String) async throws -> String {
+        let executable = claudeExecutableProvider()
+        guard FileManager.default.isExecutableFile(atPath: executable) else {
+            throw LLMError.claudeNotFound
+        }
+        let timeout = config.maxTimeoutSeconds
+        let cwd = projectRootProvider()
+        return try await Task.detached { [executable, prompt, systemAppend, timeout, cwd] in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = [
+                "-p", prompt,
+                "--append-system-prompt", systemAppend,
+                "--output-format", "text"
+            ]
+            if let cwd { process.currentDirectoryURL = cwd }
+
+            let outPipe = Pipe()
+            let errPipe = Pipe()
+            process.standardOutput = outPipe
+            process.standardError = errPipe
+
+            do {
+                try process.run()
+            } catch {
+                throw LLMError.transport("\(error)")
+            }
+
+            let started = Date()
+            while process.isRunning {
+                if Date().timeIntervalSince(started) > Double(timeout) {
+                    process.terminate()
+                    throw LLMError.timedOut(seconds: timeout)
+                }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                if Task.isCancelled {
+                    process.terminate()
+                    throw CancellationError()
+                }
+            }
+
+            let outData = (try? outPipe.fileHandleForReading.readToEnd()) ?? Data()
+            let errData = (try? errPipe.fileHandleForReading.readToEnd()) ?? Data()
+            if process.terminationStatus != 0 {
+                let stderr = String(decoding: errData, as: UTF8.self)
+                throw LLMError.nonZero(code: process.terminationStatus, stderr: stderr)
+            }
+            return String(decoding: outData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        }.value
+    }
+
+    public enum LLMError: Error, LocalizedError {
+        case claudeNotFound
+        case timedOut(seconds: Int)
+        case nonZero(code: Int32, stderr: String)
+        case transport(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .claudeNotFound:
+                return "claude CLI not found at the configured path. Set it in Settings → General → Tools."
+            case .timedOut(let s):
+                return "claude -p timed out after \(s) seconds."
+            case .nonZero(let code, let stderr):
+                let trimmed = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                return "claude exited \(code)\(trimmed.isEmpty ? "" : ": \(trimmed)")"
+            case .transport(let msg):
+                return "Couldn't run claude: \(msg)"
+            }
+        }
+    }
+
+    // MARK: - Parsers (same shape as before)
 
     func parseTaskDraft(_ raw: String, fallbackTitle: String) -> WrikeTaskDraft {
         let lines = raw.split(separator: "\n", omittingEmptySubsequences: false)

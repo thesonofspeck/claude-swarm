@@ -247,52 +247,21 @@ struct SettingsSheet: View {
             .environmentObject(env)
     }
 
-    @State private var llmKey: String = ""
-    @State private var llmKeyStored: Bool = false
-    @State private var llmModel: String = "claude-sonnet-4-6"
     @State private var llmEnabled: Bool = false
-    @State private var llmMaxTokens: Int = 1024
+    @State private var llmTimeout: Int = 60
 
     private var aiTab: some View {
         Form {
-            Section("Anthropic API") {
-                if llmKeyStored {
-                    HStack {
-                        Image(systemName: "key.fill").foregroundStyle(Palette.green)
-                        Text("API key stored in Keychain")
-                        Spacer()
-                        Button("Replace") { llmKeyStored = false; llmKey = "" }
-                        Button("Remove", role: .destructive) {
-                            env.llm.removeKey()
-                            llmKeyStored = false
-                        }
-                    }
-                } else {
-                    SecureField("API key (sk-ant-…)", text: $llmKey)
-                    Button("Save key") {
-                        do {
-                            try env.llm.setKey(llmKey)
-                            llmKeyStored = true
-                            llmKey = ""
-                        } catch {
-                            self.error = "\(error)"
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(llmKey.isEmpty)
-                }
-            }
-            Section("Drafting") {
-                TextField("Model", text: $llmModel)
-                Stepper("Max tokens: \(llmMaxTokens)", value: $llmMaxTokens, in: 256...4096, step: 256)
-                Toggle("Enable AI assist", isOn: $llmEnabled)
+            Section("Drafting via Claude Code") {
+                Toggle("Enable ✨ buttons", isOn: $llmEnabled)
+                Stepper("Timeout: \(llmTimeout)s", value: $llmTimeout, in: 15...300, step: 15)
+            } footer: {
+                Text("Powers the ✨ buttons in New Session, New Wrike Task, and PR Create. Drafts run via `claude -p` (no API key needed) using the `wrike-task-drafter` and `pr-drafter` skills bundled with each project's `.claude/skills/`. Edit those skills to change the format the team uses.")
+                    .font(Type.caption).foregroundStyle(Palette.fgMuted)
             }
             Section {
                 Button("Save AI settings") { saveAI() }
                     .keyboardShortcut(.defaultAction)
-            } footer: {
-                Text("Powers ✨ buttons in the New Session, New Wrike Task, and PR-create flows. Used to draft titles and descriptions; never sent your code unless you click Draft.")
-                    .font(Type.caption).foregroundStyle(Palette.fgMuted)
             }
         }
         .formStyle(.grouped)
@@ -301,17 +270,14 @@ struct SettingsSheet: View {
 
     private func reloadAI() {
         let cfg = env.llm.config
-        llmModel = cfg.model
-        llmMaxTokens = cfg.maxTokens
         llmEnabled = cfg.enabled
-        llmKeyStored = env.llm.hasKey()
+        llmTimeout = cfg.maxTimeoutSeconds
     }
 
     private func saveAI() {
         var cfg = env.llm.config
-        cfg.model = llmModel
-        cfg.maxTokens = llmMaxTokens
         cfg.enabled = llmEnabled
+        cfg.maxTimeoutSeconds = llmTimeout
         env.llm.saveConfig(cfg)
     }
 

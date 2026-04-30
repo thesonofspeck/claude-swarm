@@ -45,6 +45,17 @@ public struct Installer {
             try Data(contentsOf: url).write(to: dest, options: .atomic)
         }
 
+        for name in BootstrapResources.bundledSkillNames {
+            let dest = AgentLayout.skillFile(in: plan.projectURL, name: name)
+            if !overwrite, FileManager.default.fileExists(atPath: dest.path) { continue }
+            try FileManager.default.createDirectory(
+                at: dest.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let url = try BootstrapResources.skillTemplate(name)
+            try Data(contentsOf: url).write(to: dest, options: .atomic)
+        }
+
         try writeSettings(plan: plan, overwrite: overwrite)
         try writeMCPConfig(plan: plan, overwrite: overwrite)
         try writeClaudeMd(plan: plan)

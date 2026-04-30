@@ -93,7 +93,13 @@ public final class AppEnvironment: ObservableObject {
         let libSource = TeamLibrarySource(cacheRoot: libraryCache)
         self.library = LibraryStore(teamSource: libSource)
         self.activity = ActivityLog(db: db)
-        self.llm = LLMHelper(keychain: keychain)
+        // Capture by reference so the helper picks up runtime changes
+        // (the user can update the claude path at any time).
+        self.llm = LLMHelper(
+            claudeExecutable: { [weak self] in
+                self?.settings.claudeExecutable ?? "/usr/local/bin/claude"
+            }
+        )
         let remoteRef = self.remote
         let projectsRef = self.projects
         remote.onSendInput = { sessionId, text in

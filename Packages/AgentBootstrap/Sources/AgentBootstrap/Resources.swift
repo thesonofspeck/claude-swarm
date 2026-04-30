@@ -31,6 +31,22 @@ public enum BootstrapResources {
         return url
     }
 
+    /// Bundled skill markdown by name (without the `.md` suffix). Used by
+    /// the Installer to seed `.claude/skills/` and by LLMHelper to load
+    /// drafting rules at runtime.
+    public static func skillTemplate(_ name: String) throws -> URL {
+        guard let url = Bundle.module.url(
+            forResource: name,
+            withExtension: "md",
+            subdirectory: "Resources/Skills"
+        ) else {
+            throw InstallerError.missingResource("\(name).md")
+        }
+        return url
+    }
+
+    public static let bundledSkillNames = ["wrike-task-drafter", "pr-drafter"]
+
     /// Copy the bundled notify hook into `directory` if its content differs
     /// from what's already there. Skips writes (and the chmod) on every
     /// launch when nothing changed.
@@ -65,6 +81,10 @@ public enum BootstrapResources {
 public enum AgentLayout {
     public static func agentFile(in projectRoot: URL, name: String) -> URL {
         projectRoot.appendingPathComponent(".claude/agents/\(name).md")
+    }
+
+    public static func skillFile(in projectRoot: URL, name: String) -> URL {
+        projectRoot.appendingPathComponent(".claude/skills/\(name).md")
     }
 
     public static func settingsFile(in projectRoot: URL) -> URL {
