@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "DiffViewer",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS("26.0")],
     products: [
         .library(name: "DiffViewer", targets: ["DiffViewer"])
     ],

@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "AgentBootstrap",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS("26.0")],
     products: [
         .library(name: "AgentBootstrap", targets: ["AgentBootstrap"])
     ],

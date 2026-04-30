@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "PairingService",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS("26.0")],
     products: [
         .library(name: "PairingService", targets: ["PairingService"])
     ],

@@ -5,8 +5,8 @@ your Mac. After that, normal Xcode build/run.
 
 ## Prerequisites
 
-- macOS 14 (Sonoma) or newer
-- Xcode 15+ with command-line tools (`xcode-select --install`)
+- macOS 26 (Tahoe) or newer
+- Xcode 26+ with command-line tools (`xcode-select --install`)
 - `git` 2.40+ (for `worktree` features)
 - The `claude` CLI on PATH (`which claude`)
 - The `gh` CLI installed and logged in (`gh auth login`) — used for **all**

@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "SessionCore",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS("26.0")],
     products: [
         .library(name: "SessionCore", targets: ["SessionCore"])
     ],

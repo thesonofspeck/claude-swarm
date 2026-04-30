@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "AtomPalette",
-    platforms: [.macOS(.v14), .iOS(.v17)],
+    platforms: [.macOS("26.0"), .iOS("26.0")],
     products: [
         .library(name: "AtomPalette", targets: ["AtomPalette"])
     ],
