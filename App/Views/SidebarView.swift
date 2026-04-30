@@ -8,6 +8,7 @@ struct SidebarView: View {
     @EnvironmentObject var projectList: ProjectListViewModel
     @EnvironmentObject var notifier: Notifier
     @Binding var selectedSession: Session?
+    @Binding var newSessionProjectId: String?
     @State private var showingAddProject = false
     @State private var showingSettings = false
 
@@ -17,17 +18,33 @@ struct SidebarView: View {
                 Section {
                     let sessions = projectList.sessions(for: project.id)
                     if sessions.isEmpty {
-                        Text("No sessions yet")
-                            .font(Type.caption)
-                            .foregroundStyle(Palette.fgMuted)
-                            .padding(.vertical, Metrics.Space.xs)
+                        Button {
+                            newSessionProjectId = project.id
+                        } label: {
+                            Label("New session", systemImage: "plus.circle")
+                                .font(Type.caption)
+                                .foregroundStyle(Palette.fgMuted)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, Metrics.Space.xs)
                     } else {
                         ForEach(sessions) { session in
                             sessionRow(session).tag(session)
+                                .contextMenu { sessionContextMenu(session) }
                         }
+                        Button {
+                            newSessionProjectId = project.id
+                        } label: {
+                            Label("New session", systemImage: "plus.circle.fill")
+                                .font(Type.caption)
+                                .foregroundStyle(Palette.blue)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, Metrics.Space.xs)
                     }
                 } header: {
                     projectHeader(project)
+                        .contextMenu { projectContextMenu(project) }
                 }
             }
 
@@ -43,8 +60,9 @@ struct SidebarView: View {
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .background(Palette.bgSidebar)
+        .onDrop(of: [.fileURL], delegate: ProjectDropDelegate(showSheet: $showingAddProject, sheetPath: $droppedPath))
         .sheet(isPresented: $showingAddProject) {
-            AddProjectSheet().environmentObject(env)
+            AddProjectSheet(initialPath: droppedPath).environmentObject(env)
         }
         .sheet(isPresented: $showingSettings) {
             SettingsSheet().environmentObject(env)
@@ -56,7 +74,52 @@ struct SidebarView: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .swarmAddProject)) { _ in
+            showingAddProject = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .swarmRefresh)) { _ in
+            projectList.reload()
+        }
     }
+
+    @ViewBuilder
+    private func sessionContextMenu(_ session: Session) -> some View {
+        Button {
+            NSWorkspace.shared.open(URL(fileURLWithPath: session.worktreePath))
+        } label: { Label("Open worktree in Finder", systemImage: "folder") }
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(session.branch, forType: .string)
+        } label: { Label("Copy branch name", systemImage: "doc.on.doc") }
+        Divider()
+        Button(role: .destructive) {
+            Task {
+                try? await env.sessionManager.close(sessionId: session.id, deleteWorktree: true)
+                projectList.reload()
+            }
+        } label: { Label("Delete worktree…", systemImage: "trash") }
+    }
+
+    @ViewBuilder
+    private func projectContextMenu(_ project: Project) -> some View {
+        Button {
+            newSessionProjectId = project.id
+        } label: { Label("New session…", systemImage: "plus.circle") }
+        Button {
+            NSWorkspace.shared.open(URL(fileURLWithPath: project.localPath))
+        } label: { Label("Open in Finder", systemImage: "folder") }
+        Button {
+            Task {
+                try? await env.sessionManager.bootstrap(project: project)
+            }
+        } label: { Label("Reset agents to default", systemImage: "arrow.counterclockwise") }
+        Divider()
+        Button(role: .destructive) {
+            projectList.remove(projectId: project.id)
+        } label: { Label("Remove project", systemImage: "minus.circle") }
+    }
+
+    @State private var droppedPath: String? = nil
 
     private func projectHeader(_ project: Project) -> some View {
         let pendingCount = projectList.sessions(for: project.id)
@@ -168,6 +231,7 @@ struct AddProjectSheet: View {
     @EnvironmentObject var env: AppEnvironment
     @EnvironmentObject var projectList: ProjectListViewModel
     @Environment(\.dismiss) private var dismiss
+    var initialPath: String? = nil
     @State private var name = ""
     @State private var path = ""
     @State private var baseBranch = "main"
@@ -194,6 +258,14 @@ struct AddProjectSheet: View {
         }
         .formStyle(.grouped)
         .frame(width: 480, height: 360)
+        .onAppear {
+            if let initialPath, path.isEmpty {
+                path = initialPath
+                if name.isEmpty {
+                    name = (initialPath as NSString).lastPathComponent
+                }
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
@@ -225,5 +297,28 @@ struct AddProjectSheet: View {
             path = url.path
             if name.isEmpty { name = url.lastPathComponent }
         }
+    }
+}
+
+struct ProjectDropDelegate: DropDelegate {
+    @Binding var showSheet: Bool
+    @Binding var sheetPath: String?
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.fileURL])
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let provider = info.itemProviders(for: [.fileURL]).first else { return false }
+        provider.loadObject(ofClass: URL.self) { url, _ in
+            guard let url else { return }
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { return }
+            DispatchQueue.main.async {
+                sheetPath = url.path
+                showSheet = true
+            }
+        }
+        return true
     }
 }

@@ -7,7 +7,7 @@ import TerminalUI
 import SessionCore
 
 enum DetailTab: String, CaseIterable, Identifiable {
-    case terminal, files, diff, history, pr, tasks, memory, agents
+    case terminal, files, diff, history, pr, tasks, memory, agents, transcript
     var id: String { rawValue }
 
     var label: String {
@@ -20,6 +20,7 @@ enum DetailTab: String, CaseIterable, Identifiable {
         case .tasks: return "Tasks"
         case .memory: return "Memory"
         case .agents: return "Agents"
+        case .transcript: return "Transcript"
         }
     }
 
@@ -33,6 +34,7 @@ enum DetailTab: String, CaseIterable, Identifiable {
         case .tasks: return "checklist"
         case .memory: return "brain"
         case .agents: return "person.3"
+        case .transcript: return "text.alignleft"
         }
     }
 }
@@ -57,6 +59,11 @@ struct DetailView: View {
         }
         .task(id: session?.projectId) {
             project = session.flatMap { try? env.projects.find(id: $0.projectId) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .swarmSelectTab)) { note in
+            if let raw = note.object as? String, let t = DetailTab(rawValue: raw) {
+                tab = t
+            }
         }
     }
 
@@ -89,6 +96,7 @@ struct DetailView: View {
             case .tasks: TasksTab(session: session, project: project)
             case .memory: MemoryTab(project: project, session: session)
             case .agents: AgentsTab(project: project)
+            case .transcript: TranscriptTab(session: session)
             }
         } else {
             EmptyState(
@@ -119,7 +127,7 @@ struct TerminalTab: View {
                 EmptyState(
                     title: "Session not running",
                     systemImage: "powerplug",
-                    description: "This session was started in a previous app launch. Start a new session from the Tasks tab.",
+                    description: "This session was started in a previous app launch. Open the Transcript tab to read its scrollback.",
                     tint: Palette.fgMuted
                 )
             }

@@ -116,6 +116,7 @@ struct TasksTab: View {
                 pendingTask = nil
                 starting = false
             }
+            await env.wrikeBridge.transitionStarted(taskId: task.id)
         } catch {
             await MainActor.run {
                 self.error = "Could not start session: \(error.localizedDescription)"

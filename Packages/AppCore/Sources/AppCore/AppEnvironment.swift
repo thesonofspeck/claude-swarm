@@ -25,6 +25,7 @@ public final class AppEnvironment: ObservableObject {
     public let history: HistoryService
     public let registry: RunningSessionRegistry
     public let projectList: ProjectListViewModel
+    public let wrikeBridge: WrikeBridge
 
     @Published public var settings: AppSettings
     @Published public var lastError: String?
@@ -40,7 +41,9 @@ public final class AppEnvironment: ObservableObject {
         self.database = db
         self.projects = ProjectRepository(db: db)
         self.sessionsRepo = SessionRepository(db: db)
-        self.wrike = WrikeClient(keychain: keychain)
+        let wrikeClient = WrikeClient(keychain: keychain)
+        self.wrike = wrikeClient
+        self.wrikeBridge = WrikeBridge(client: wrikeClient)
         self.github = GitHubClient()
         self.memory = try MemoryStore()
         self.installer = Installer()

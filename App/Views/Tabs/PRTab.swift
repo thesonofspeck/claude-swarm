@@ -11,11 +11,15 @@ struct PRTab: View {
     @State private var pr: GHPullRequest?
     @State private var checks: [GHCheckRun] = []
     @State private var comments: [GHReviewComment] = []
+    @State private var threads: [GHReviewThread] = []
     @State private var loading = false
     @State private var error: String?
     @State private var creating = false
     @State private var prTitle: String = ""
     @State private var prBody: String = ""
+    @State private var replyDrafts: [Int64: String] = [:]
+    @State private var posting: Set<Int64> = []
+    @State private var resolvedRoots: Set<Int64> = []
 
     var body: some View {
         Group {
@@ -192,8 +196,10 @@ struct PRTab: View {
     }
 
     private func commentRow(_ c: GHReviewComment) -> some View {
-        Card {
-            VStack(alignment: .leading, spacing: 6) {
+        let thread = threads.first { $0.firstCommentId == c.id }
+        let isResolved = thread?.isResolved == true || (thread.map { resolvedRoots.contains($0.firstCommentId ?? 0) } ?? false)
+        return Card {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: Metrics.Space.sm) {
                     Text(c.user?.login ?? "?")
                         .font(Type.caption.weight(.semibold))
@@ -202,6 +208,9 @@ struct PRTab: View {
                         Text(path)
                             .font(Type.monoCaption)
                             .foregroundStyle(Palette.fgMuted)
+                    }
+                    if isResolved {
+                        Pill(text: "Resolved", systemImage: "checkmark.circle.fill", tint: Palette.green)
                     }
                     Spacer()
                     if let url = c.url, let u = URL(string: url) {
@@ -216,7 +225,77 @@ struct PRTab: View {
                     .font(Type.body)
                     .foregroundStyle(Palette.fg)
                     .frame(maxWidth: .infinity, alignment: .leading)
+
+                if !isResolved {
+                    HStack(alignment: .top, spacing: Metrics.Space.sm) {
+                        TextField("Reply…", text: Binding(
+                            get: { replyDrafts[c.id] ?? "" },
+                            set: { replyDrafts[c.id] = $0 }
+                        ), axis: .vertical)
+                        .lineLimit(1...4)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(posting.contains(c.id))
+
+                        Button {
+                            Task { await reply(to: c) }
+                        } label: {
+                            Image(systemName: "paperplane.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(posting.contains(c.id) || (replyDrafts[c.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .help("Reply")
+
+                        if let thread {
+                            Button {
+                                Task { await resolve(thread: thread) }
+                            } label: {
+                                Image(systemName: "checkmark.circle")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .help("Resolve thread")
+                        }
+                    }
+                }
             }
+        }
+    }
+
+    private func reply(to comment: GHReviewComment) async {
+        guard let project, let pr else { return }
+        let body = (replyDrafts[comment.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return }
+        await MainActor.run { _ = posting.insert(comment.id) }
+        do {
+            let owner = project.githubOwner ?? (try await env.github.currentRepo(in: URL(fileURLWithPath: session.worktreePath)).owner)
+            let repo = project.githubRepo ?? (try await env.github.currentRepo(in: URL(fileURLWithPath: session.worktreePath)).repo)
+            try await env.github.replyToReviewComment(
+                owner: owner, repo: repo, number: pr.number,
+                commentId: comment.id, body: body
+            )
+            await MainActor.run {
+                replyDrafts[comment.id] = ""
+                posting.remove(comment.id)
+            }
+            await load()
+        } catch {
+            await MainActor.run {
+                self.error = "Could not post reply: \(error.localizedDescription)"
+                posting.remove(comment.id)
+            }
+        }
+    }
+
+    private func resolve(thread: GHReviewThread) async {
+        do {
+            try await env.github.resolveReviewThread(threadId: thread.id)
+            await MainActor.run {
+                if let rootId = thread.firstCommentId { resolvedRoots.insert(rootId) }
+            }
+            await load()
+        } catch {
+            await MainActor.run { self.error = "Could not resolve: \(error.localizedDescription)" }
         }
     }
 
@@ -294,11 +373,16 @@ struct PRTab: View {
                 }
                 async let runs = env.github.checks(owner: owner, repo: repo, number: pr.number)
                 async let cs = env.github.reviewComments(owner: owner, repo: repo, number: pr.number)
-                let (rs, csL) = try await (runs, cs)
+                async let ths = (try? await env.github.reviewThreads(owner: owner, repo: repo, number: pr.number)) ?? []
+                let (rs, csL, thsL) = try await (runs, cs, ths)
                 await MainActor.run {
                     self.pr = pr
                     self.checks = rs
                     self.comments = csL
+                    self.threads = thsL
+                    if pr.merged == true, let id = session.taskId {
+                        Task { await env.wrikeBridge.transitionDone(taskId: id) }
+                    }
                     loading = false
                 }
             } else {
@@ -336,6 +420,9 @@ struct PRTab: View {
                 s.status = .prOpen
                 return s
             }())
+            if let id = session.taskId {
+                await env.wrikeBridge.transitionInReview(taskId: id)
+            }
             await load()
             await MainActor.run { creating = false }
         } catch {

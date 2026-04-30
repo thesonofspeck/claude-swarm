@@ -39,6 +39,18 @@ public struct Installer {
 
         try writeSettings(plan: plan, overwrite: overwrite)
         try writeMCPConfig(plan: plan, overwrite: overwrite)
+        try writeClaudeMd(plan: plan)
+    }
+
+    private func writeClaudeMd(plan: BootstrapPlan) throws {
+        let dest = plan.projectURL.appendingPathComponent("CLAUDE.md")
+        guard !FileManager.default.fileExists(atPath: dest.path) else { return }
+        guard let url = Bundle.module.url(
+            forResource: "CLAUDE",
+            withExtension: "md",
+            subdirectory: "Resources/Templates"
+        ) else { throw InstallerError.missingResource("CLAUDE.md") }
+        try Data(contentsOf: url).write(to: dest, options: .atomic)
     }
 
     private func writeSettings(plan: BootstrapPlan, overwrite: Bool) throws {

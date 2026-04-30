@@ -7,12 +7,17 @@ struct RootSplitView: View {
     @State private var selectedSession: Session?
     @State private var inspectorVisible = true
     @State private var showOnboarding = false
+    @State private var showCommandPalette = false
+    @State private var newSessionProjectId: String?
 
     var body: some View {
         NavigationSplitView {
-            SidebarView(selectedSession: $selectedSession)
-                .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 360)
-                .background(Palette.bgSidebar)
+            SidebarView(
+                selectedSession: $selectedSession,
+                newSessionProjectId: $newSessionProjectId
+            )
+            .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 360)
+            .background(Palette.bgSidebar)
         } content: {
             DetailView(session: selectedSession)
                 .navigationSplitViewColumnWidth(min: 600, ideal: 800)
@@ -26,25 +31,68 @@ struct RootSplitView: View {
         }
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                IconButton(systemImage: "plus", help: "New session") {}
+                IconButton(systemImage: "plus", help: "New session — ⌘N") {
+                    newSessionProjectId = selectedSession?.projectId ?? ""
+                }
+            }
+            ToolbarItem(placement: .principal) {
+                IconButton(systemImage: "command", help: "Command palette — ⌘K") {
+                    showCommandPalette = true
+                }
             }
             ToolbarItem(placement: .primaryAction) {
                 IconButton(
                     systemImage: inspectorVisible ? "sidebar.right" : "sidebar.squares.right",
-                    help: "Toggle inspector"
+                    help: "Toggle inspector — ⌘⌥I"
                 ) {
                     withAnimation(Motion.spring) { inspectorVisible.toggle() }
                 }
                 .keyboardShortcut("i", modifiers: [.command, .option])
             }
         }
+        .overlay(alignment: .bottom) {
+            ErrorBanner(message: env.lastError) {
+                env.lastError = nil
+            }
+            .padding(Metrics.Space.md)
+        }
         .sheet(isPresented: $showOnboarding) {
             OnboardingSheet().environmentObject(env)
+        }
+        .sheet(item: Binding(
+            get: { newSessionProjectId.map { NewSessionContext(projectId: $0) } },
+            set: { newSessionProjectId = $0?.projectId }
+        )) { ctx in
+            NewSessionSheet(preselectedProjectId: ctx.projectId.isEmpty ? nil : ctx.projectId)
+                .environmentObject(env)
+                .environmentObject(env.projectList)
+                .environmentObject(env.registry)
+        }
+        .sheet(isPresented: $showCommandPalette) {
+            CommandPalette(selectedSession: $selectedSession)
+                .environmentObject(env)
+                .environmentObject(env.projectList)
         }
         .onAppear {
             if !env.settings.hasCompletedOnboarding {
                 showOnboarding = true
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .swarmNewSession)) { _ in
+            newSessionProjectId = selectedSession?.projectId ?? ""
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .swarmCommandPalette)) { _ in
+            showCommandPalette = true
+        }
     }
+}
+
+struct NewSessionContext: Identifiable {
+    let projectId: String
+    var id: String { projectId }
+}
+
+extension Notification.Name {
+    static let swarmNewSession = Notification.Name("ClaudeSwarm.NewSession")
+    static let swarmCommandPalette = Notification.Name("ClaudeSwarm.CommandPalette")
 }

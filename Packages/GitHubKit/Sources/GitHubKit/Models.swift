@@ -70,6 +70,21 @@ public struct GHCheckRun: Codable, Equatable, Identifiable, Sendable {
     public var id: String { name + (link ?? "") }
 }
 
+public struct GHReviewThread: Codable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let isResolved: Bool
+    public let comments: Comments
+
+    public struct Comments: Codable, Equatable, Sendable {
+        public let nodes: [Comment]
+        public struct Comment: Codable, Equatable, Sendable {
+            public let databaseId: Int64
+        }
+    }
+
+    public var firstCommentId: Int64? { comments.nodes.first?.databaseId }
+}
+
 public struct GHRepoSummary: Codable, Equatable, Identifiable, Sendable {
     public let nameWithOwner: String
     public let description: String?

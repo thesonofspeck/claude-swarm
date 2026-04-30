@@ -41,7 +41,7 @@ public actor WrikeClient {
         try keychain.set(token, account: KeychainAccount.wrike)
     }
 
-    public func hasToken() -> Bool {
+    public func hasToken() async -> Bool {
         (try? keychain.get(account: KeychainAccount.wrike)) != nil
     }
 
@@ -63,9 +63,29 @@ public actor WrikeClient {
         try await getList(path: "customstatuses")
     }
 
+    /// Transition a task to a specific custom status. Wrike requires the
+    /// raw custom-status id (workspace-specific); use `WrikeStatusMapper`
+    /// to resolve a semantic transition like `.inProgress` to one.
+    public func updateTaskStatus(taskId: String, customStatusId: String) async throws -> WrikeTask? {
+        try await put(path: "tasks/\(taskId)", form: ["customStatus": customStatusId]).first
+    }
+
     // MARK: - HTTP plumbing
 
+    private func put<T: Decodable>(path: String, form: [String: String]) async throws -> [T] {
+        try await send(method: "PUT", path: path, form: form)
+    }
+
     private func getList<T: Decodable>(path: String, query: [String: String] = [:]) async throws -> [T] {
+        try await send(method: "GET", path: path, query: query)
+    }
+
+    private func send<T: Decodable>(
+        method: String,
+        path: String,
+        query: [String: String] = [:],
+        form: [String: String] = [:]
+    ) async throws -> [T] {
         let token: String
         do { token = try keychain.get(account: KeychainAccount.wrike) }
         catch { throw WrikeError.missingToken }
@@ -81,8 +101,18 @@ public actor WrikeClient {
         }
         var req = URLRequest(url: url)
         req.timeoutInterval = 20
+        req.httpMethod = method
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
+        if !form.isEmpty {
+            req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            let body = form.map { key, value -> String in
+                let k = key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? key
+                let v = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
+                return "\(k)=\(v)"
+            }.joined(separator: "&")
+            req.httpBody = Data(body.utf8)
+        }
 
         var attempt = 0
         while true {

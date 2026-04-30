@@ -191,6 +191,65 @@ public actor GitHubClient {
         }
     }
 
+    public func replyToReviewComment(
+        owner: String, repo: String, number: Int,
+        commentId: Int64, body: String
+    ) async throws {
+        _ = try await runner.run([
+            "api", "-X", "POST",
+            "repos/\(owner)/\(repo)/pulls/\(number)/comments/\(commentId)/replies",
+            "-f", "body=\(body)"
+        ])
+    }
+
+    public func reviewThreads(owner: String, repo: String, number: Int) async throws -> [GHReviewThread] {
+        // GraphQL gives us thread IDs (REST only exposes comment IDs). We
+        // need thread IDs to call resolveReviewThread.
+        struct Response: Decodable {
+            struct DataPayload: Decodable {
+                struct Repo: Decodable {
+                    struct PR: Decodable {
+                        struct Threads: Decodable {
+                            let nodes: [GHReviewThread]
+                        }
+                        let reviewThreads: Threads
+                    }
+                    let pullRequest: PR
+                }
+                let repository: Repo
+            }
+            let data: DataPayload
+        }
+        let query = """
+            query($owner:String!,$repo:String!,$number:Int!){
+              repository(owner:$owner,name:$repo){
+                pullRequest(number:$number){
+                  reviewThreads(first:100){
+                    nodes{ id isResolved comments(first:1){ nodes{ databaseId } } }
+                  }
+                }
+              }
+            }
+            """
+        let env: Response = try await runner.runJSON([
+            "api", "graphql",
+            "-f", "query=\(query)",
+            "-F", "owner=\(owner)",
+            "-F", "repo=\(repo)",
+            "-F", "number=\(number)"
+        ])
+        return env.data.repository.pullRequest.reviewThreads.nodes
+    }
+
+    public func resolveReviewThread(threadId: String) async throws {
+        let mutation = "mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ id isResolved } } }"
+        _ = try await runner.run([
+            "api", "graphql",
+            "-f", "query=\(mutation)",
+            "-F", "id=\(threadId)"
+        ])
+    }
+
     public func checks(owner: String, repo: String, number: Int) async throws -> [GHCheckRun] {
         // `gh pr checks --json name,state,conclusion,link,bucket`
         try await runner.runJSON([

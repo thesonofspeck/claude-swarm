@@ -29,8 +29,37 @@ struct ClaudeSwarmApp: App {
         .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("New Session") {}
-                    .keyboardShortcut("n", modifiers: .command)
+                Button("New Session") {
+                    NotificationCenter.default.post(name: .swarmNewSession, object: nil)
+                }
+                .keyboardShortcut("n", modifiers: .command)
+
+                Button("Add Project…") {
+                    NotificationCenter.default.post(name: .swarmAddProject, object: nil)
+                }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+            }
+            CommandGroup(after: .toolbar) {
+                Button("Command Palette") {
+                    NotificationCenter.default.post(name: .swarmCommandPalette, object: nil)
+                }
+                .keyboardShortcut("k", modifiers: .command)
+
+                Divider()
+
+                ForEach(Array(DetailTab.allCases.enumerated()), id: \.element) { idx, tab in
+                    if idx < 9 {
+                        Button(tab.label) {
+                            NotificationCenter.default.post(name: .swarmSelectTab, object: tab.rawValue)
+                        }
+                        .keyboardShortcut(KeyEquivalent(Character("\(idx + 1)")), modifiers: .command)
+                    }
+                }
+
+                Button("Refresh") {
+                    NotificationCenter.default.post(name: .swarmRefresh, object: nil)
+                }
+                .keyboardShortcut("r", modifiers: .command)
             }
         }
 
@@ -40,4 +69,10 @@ struct ClaudeSwarmApp: App {
                 .tint(Palette.blue)
         }
     }
+}
+
+extension Notification.Name {
+    static let swarmAddProject = Notification.Name("ClaudeSwarm.AddProject")
+    static let swarmSelectTab = Notification.Name("ClaudeSwarm.SelectTab")
+    static let swarmRefresh = Notification.Name("ClaudeSwarm.Refresh")
 }
