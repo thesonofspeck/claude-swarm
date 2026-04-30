@@ -67,9 +67,11 @@ public enum GitConfigParser {
 
     /// Pulls owner/repo out of common GitHub URL shapes — both
     /// `git@github.com:owner/repo.git` and `https://github.com/owner/repo(.git)`.
+    /// The leading anchor `(://|@)` prevents matches on hostnames like
+    /// `github.com.evil.com:owner/repo`.
     static func parseGitHubURL(_ url: String) -> (owner: String?, repo: String?) {
         let trimmed = url.trimmingCharacters(in: .whitespaces)
-        if let range = trimmed.range(of: "github.com[:/]", options: .regularExpression) {
+        if let range = trimmed.range(of: "(://|@)github\\.com[:/]", options: .regularExpression) {
             let suffix = String(trimmed[range.upperBound...])
                 .replacingOccurrences(of: ".git", with: "")
                 .trimmingCharacters(in: CharacterSet(charactersIn: "/"))

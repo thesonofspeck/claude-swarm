@@ -83,10 +83,16 @@ public final class ProjectListViewModel: ObservableObject {
         sessionsByProject[projectId] ?? []
     }
 
+    /// 2 seconds is fast enough that hook-driven status changes feel
+    /// instant in the sidebar and slow enough that the SQLite read cost
+    /// is irrelevant (the equality guard further skips re-publishes when
+    /// nothing changed).
+    private static let pollInterval: TimeInterval = 2
+
     private func startPolling() {
         refreshTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: UInt64(Self.pollInterval * 1_000_000_000))
                 self?.reload()
             }
         }

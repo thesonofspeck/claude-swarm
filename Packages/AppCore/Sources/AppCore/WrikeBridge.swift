@@ -12,19 +12,7 @@ public actor WrikeBridge {
         self.mapper = WrikeStatusMapper(client: client)
     }
 
-    public func transitionStarted(taskId: String) async {
-        await transition(taskId: taskId, to: .inProgress)
-    }
-
-    public func transitionInReview(taskId: String) async {
-        await transition(taskId: taskId, to: .inReview)
-    }
-
-    public func transitionDone(taskId: String) async {
-        await transition(taskId: taskId, to: .done)
-    }
-
-    private func transition(taskId: String, to t: WrikeTransition) async {
+    public func transition(taskId: String, to t: WrikeTransition) async {
         guard !taskId.isEmpty else { return }
         guard await client.hasToken() else { return }
         _ = try? await mapper.transition(taskId: taskId, to: t)

@@ -117,7 +117,7 @@ struct NewSessionSheet: View {
             )
             await MainActor.run {
                 registry.register(result.spec)
-                if !taskId.isEmpty { Task { await env.wrikeBridge.transitionStarted(taskId: taskId) } }
+                if !taskId.isEmpty { Task { await env.wrikeBridge.transition(taskId: taskId, to: .inProgress) } }
                 starting = false
                 dismiss()
             }

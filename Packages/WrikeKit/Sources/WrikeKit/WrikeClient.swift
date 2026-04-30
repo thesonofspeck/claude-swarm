@@ -208,7 +208,7 @@ public actor WrikeClient {
                     throw WrikeError.http(status: http.statusCode, body: bodyString(data))
                 case 429:
                     let retry = (http.value(forHTTPHeaderField: "Retry-After")
-                        .flatMap(Double.init)) ?? pow(2.0, Double(attempt))
+                        .flatMap(Double.init)) ?? Self.jitteredBackoff(attempt)
                     if attempt > maxRetries {
                         throw WrikeError.rateLimited(retryAfter: retry)
                     }
@@ -217,8 +217,7 @@ public actor WrikeClient {
                     if attempt > maxRetries {
                         throw WrikeError.http(status: http.statusCode, body: bodyString(data))
                     }
-                    let backoff = pow(2.0, Double(attempt))
-                    try await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
+                    try await Task.sleep(nanoseconds: UInt64(Self.jitteredBackoff(attempt) * 1_000_000_000))
                 default:
                     throw WrikeError.http(status: http.statusCode, body: bodyString(data))
                 }
@@ -228,10 +227,16 @@ public actor WrikeClient {
                 throw CancellationError()
             } catch {
                 if attempt > maxRetries { throw WrikeError.transport(error) }
-                let backoff = pow(2.0, Double(attempt))
-                try await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
+                try await Task.sleep(nanoseconds: UInt64(Self.jitteredBackoff(attempt) * 1_000_000_000))
             }
         }
+    }
+
+    /// 2^attempt seconds with ±50% jitter so concurrent clients don't
+    /// all retry in lockstep after a rate-limit window opens.
+    private static func jitteredBackoff(_ attempt: Int) -> Double {
+        let base = pow(2.0, Double(attempt))
+        return base * (0.5 + Double.random(in: 0...1))
     }
 
     private func bodyString(_ data: Data) -> String {

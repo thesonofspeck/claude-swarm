@@ -396,7 +396,7 @@ struct PRTab: View {
                     self.comments = csL
                     self.threads = thsL
                     if pr.merged == true, let id = session.taskId {
-                        Task { await env.wrikeBridge.transitionDone(taskId: id) }
+                        Task { await env.wrikeBridge.transition(taskId: id, to: .done) }
                     }
                     loading = false
                 }
@@ -436,7 +436,7 @@ struct PRTab: View {
                 return s
             }())
             if let id = session.taskId {
-                await env.wrikeBridge.transitionInReview(taskId: id)
+                await env.wrikeBridge.transition(taskId: id, to: .inReview)
             }
             await load()
             await MainActor.run { creating = false }

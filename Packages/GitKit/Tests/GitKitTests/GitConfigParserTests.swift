@@ -39,6 +39,16 @@ final class GitConfigParserTests: XCTestCase {
         XCTAssertEqual(remotes[1].owner, "acme-upstream")
     }
 
+    func testRejectsLookalikeHostname() {
+        let config = """
+        [remote "origin"]
+            url = https://github.com.evil.com:443/acme/widgets.git
+        """
+        let remote = GitConfigParser.parse(config).first
+        XCTAssertNil(remote?.owner)
+        XCTAssertNil(remote?.repo)
+    }
+
     func testParseNonGitHubReturnsNilOwner() {
         let config = """
         [remote "origin"]

@@ -233,7 +233,4 @@ public final class LLMHelper: ObservableObject {
         let body = bodyLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         return PRDraft(title: title.isEmpty ? fallbackTitle : title, body: body)
     }
-
-    // Test-friendly accessor.
-    public var debugClient: AnthropicClient { client }
 }

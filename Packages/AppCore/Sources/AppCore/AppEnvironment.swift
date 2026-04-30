@@ -1,10 +1,10 @@
 import Foundation
+import CryptoKit
 import KeychainKit
 import PersistenceKit
 import GitKit
 import WrikeKit
 import GitHubKit
-import GitKit
 import LibraryKit
 import SessionCore
 import MemoryService
@@ -124,9 +124,13 @@ public final class AppEnvironment: ObservableObject {
         // when the window opens.
         let settingsRef = { [weak self] in self?.settings ?? AppSettings() }
         self.remote.quietHoursPredicate = { settingsRef().isInQuietHours() }
+        // Wake once a minute; the only thing this does outside quiet
+        // hours is flush queued pushes — fast enough that latency on the
+        // first push after the window ends is acceptable.
+        let drainInterval: UInt64 = 60 * 1_000_000_000
         let drainTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 60 * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: drainInterval)
                 if Task.isCancelled { break }
                 guard let self else { break }
                 if !self.settings.isInQuietHours() {
@@ -169,12 +173,16 @@ public final class AppEnvironment: ObservableObject {
                     if let session = try? repoRef.find(id: id),
                        let project = try? projectsRef.find(id: session.projectId),
                        let remote = remoteRef {
+                        // Stable id derived from sessionId + prompt so a
+                        // hook firing twice (retry / reconnect) collapses
+                        // into a single APNs alert.
+                        let promptText = event.message ?? "Claude needs your input."
                         let approval = ApprovalRequest(
-                            id: UUID().uuidString,
+                            id: stableApprovalId(sessionId: id, prompt: promptText),
                             sessionId: id,
                             projectName: project.name,
                             taskTitle: session.taskTitle,
-                            prompt: event.message ?? "Claude needs your input.",
+                            prompt: promptText,
                             toolCall: nil,
                             createdAt: Date()
                         )
@@ -237,6 +245,14 @@ public final class AppEnvironment: ObservableObject {
         }
         return id
     }
+}
+
+/// Hashes (sessionId + prompt) into a hex id so duplicate hook events
+/// produce the same ApprovalRequest.id and get collapsed by APNs and
+/// the iOS client's pendingApprovals dedup.
+public func stableApprovalId(sessionId: String, prompt: String) -> String {
+    let bytes = Data("\(sessionId)|\(prompt)".utf8)
+    return SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
 }
 
 public extension Notification.Name {
