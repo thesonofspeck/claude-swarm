@@ -107,7 +107,8 @@ public final class LLMHelper: ObservableObject {
 
             No prose around the format. No code fences around the body.
             """
-        var user = "Working-tree diff (truncated to 8000 chars):\n\n\(String(diff.prefix(8000)))"
+        let sanitized = LLMHelper.sanitizeDiff(diff)
+        var user = "Working-tree diff (truncated to 8000 chars):\n\n\(String(sanitized.prefix(8000)))"
         if let taskTitle { user += "\n\nLinked Wrike task title: \(taskTitle)" }
         if let taskBody { user += "\n\nLinked Wrike task description:\n\(String(taskBody.prefix(2000)))" }
         let response = try await client.complete(
@@ -115,6 +116,51 @@ public final class LLMHelper: ObservableObject {
             messages: [AnthropicMessage(role: .user, content: user)]
         )
         return parsePRDraft(response, fallbackTitle: taskTitle ?? "")
+    }
+
+    /// Strip diff hunks for files that almost certainly contain secrets so
+    /// they don't reach Anthropic. Files matched by name are replaced with
+    /// a one-line placeholder; lines matching common secret patterns
+    /// (KEY=…, BEGIN PRIVATE KEY, etc.) inside other files are redacted.
+    static func sanitizeDiff(_ diff: String) -> String {
+        let secretFilenamePatterns = [
+            "(^|/)\\.env(\\.[a-zA-Z0-9_-]+)?$",
+            "(^|/)id_(rsa|ed25519|ecdsa|dsa)$",
+            "\\.(pem|key|pfx|p12|p8)$",
+            "(^|/)credentials(\\.json)?$",
+            "(^|/)secrets?(\\.(yaml|yml|json|toml))?$"
+        ]
+        let secretLinePatterns = [
+            "BEGIN [A-Z ]*PRIVATE KEY",
+            "(?i)(api[_-]?key|secret|token|password|passwd)\\s*[=:]\\s*[\"']?[A-Za-z0-9_+/=\\-]{8,}",
+            "(?i)bearer\\s+[A-Za-z0-9_\\-]{16,}"
+        ]
+
+        var output: [String] = []
+        var skipFile = false
+        for raw in diff.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = String(raw)
+            if line.hasPrefix("diff --git") {
+                skipFile = secretFilenamePatterns.contains { pattern in
+                    line.range(of: pattern, options: .regularExpression) != nil
+                }
+                if skipFile {
+                    output.append(line)
+                    output.append("[redacted: file likely contains secrets]")
+                } else {
+                    output.append(line)
+                }
+                continue
+            }
+            if skipFile { continue }
+            if (line.hasPrefix("+") || line.hasPrefix("-")),
+               secretLinePatterns.contains(where: { line.range(of: $0, options: .regularExpression) != nil }) {
+                output.append(String(line.first!) + " [redacted: looks like a secret]")
+                continue
+            }
+            output.append(line)
+        }
+        return output.joined(separator: "\n")
     }
 
     public func draftSessionPrompt(from hint: String, projectName: String?) async throws -> String {

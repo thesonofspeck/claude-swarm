@@ -39,6 +39,7 @@ public final class AppEnvironment: ObservableObject {
 
     private let hookServer: HookSocketServer
     private let settingsURL: URL
+    private var backgroundTasks: [Task<Void, Never>] = []
 
     public init() throws {
         try AppDirectories.ensureExists()
@@ -84,7 +85,7 @@ public final class AppEnvironment: ObservableObject {
         self.settings = AppSettings.load(from: settingsURL) ?? AppSettings()
 
         self.remote = try RemoteCoordinator(
-            macId: AppEnvironment.stableMacId(),
+            macId: try AppEnvironment.stableMacId(),
             macName: Host.current().localizedName ?? "Mac"
         )
 
@@ -123,14 +124,17 @@ public final class AppEnvironment: ObservableObject {
         // when the window opens.
         let settingsRef = { [weak self] in self?.settings ?? AppSettings() }
         self.remote.quietHoursPredicate = { settingsRef().isInQuietHours() }
-        Task { [weak self] in
-            while let self {
+        let drainTask = Task { [weak self] in
+            while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 60 * 1_000_000_000)
+                if Task.isCancelled { break }
+                guard let self else { break }
                 if !self.settings.isInQuietHours() {
                     await self.remote.drainQueuedPushes()
                 }
             }
         }
+        backgroundTasks.append(drainTask)
 
         let janitor = WorktreeJanitor(projects: projects, sessions: sessionsRepo)
         let memoryRef = self.memory
@@ -206,14 +210,31 @@ public final class AppEnvironment: ObservableObject {
         }
     }
 
+    /// Stops the long-running maintenance Tasks and the hook socket
+    /// server. Idempotent. Wire this into `applicationWillTerminate` for
+    /// faster app shutdown; tests can call it explicitly.
+    public func shutdown() {
+        for task in backgroundTasks { task.cancel() }
+        backgroundTasks.removeAll()
+        hookServer.stop()
+    }
+
     /// Stable per-install identifier persisted alongside other support
     /// data. Used as the macId in the wire protocol so iOS can recognise
     /// the same Mac across reboots.
-    static func stableMacId() -> String {
+    static func stableMacId() throws -> String {
         let url = AppDirectories.supportRoot.appendingPathComponent("mac-id")
         if let id = try? String(contentsOf: url, encoding: .utf8), !id.isEmpty { return id }
         let id = UUID().uuidString
-        try? id.write(to: url, atomically: true, encoding: .utf8)
+        do {
+            try id.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            // Without a stable mac id, paired iPhones can't recognise this
+            // Mac across launches — the user would have to re-pair every
+            // time. Surface the failure rather than silently breaking.
+            SwarmLog.bootstrap.error("Failed to persist mac id: \(String(describing: error), privacy: .public)")
+            throw error
+        }
         return id
     }
 }

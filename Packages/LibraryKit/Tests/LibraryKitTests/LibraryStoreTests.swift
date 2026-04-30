@@ -1,6 +1,17 @@
 import XCTest
 @testable import LibraryKit
 
+/// Helper because XCTAssertThrowsError doesn't natively support `async`.
+func XCTAssertThrowsErrorAsync<T>(_ expression: @autoclosure () async throws -> T,
+                                  file: StaticString = #file, line: UInt = #line) async {
+    do {
+        _ = try await expression()
+        XCTFail("Expected throw", file: file, line: line)
+    } catch {
+        // expected
+    }
+}
+
 final class LibraryStoreTests: XCTestCase {
     func testManifestDecodes() throws {
         let json = """
@@ -47,6 +58,32 @@ final class LibraryStoreTests: XCTestCase {
             let back = try decoder.decode(TeamLibraryConfig.self, from: data)
             XCTAssertEqual(cfg, back)
         }
+    }
+
+    func testRejectsPathTraversalInItemPath() async throws {
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("swarm-lib-traversal-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temp) }
+
+        let teamRoot = temp.appendingPathComponent("team")
+        try FileManager.default.createDirectory(at: teamRoot, withIntermediateDirectories: true)
+        let manifest = #"""
+        {"version":1,"name":"evil","items":[
+            {"id":"x","kind":"agent","name":"x","description":"x","path":"../../escape.md","version":"1"}
+        ]}
+        """#
+        try Data(manifest.utf8).write(to: teamRoot.appendingPathComponent("swarm-library.json"))
+
+        let projectRoot = temp.appendingPathComponent("project")
+        try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
+
+        let store = LibraryStore(teamSource: TeamLibrarySource(cacheRoot: temp.appendingPathComponent("cache")))
+        try await store.setTeamConfig(.local(path: teamRoot.path))
+
+        let snap = await store.snapshot(in: projectRoot)
+        let row = try XCTUnwrap(snap.rows.first { $0.item.id == "x" })
+        await XCTAssertThrowsErrorAsync(try await store.install(row.item, into: projectRoot))
     }
 
     func testInstallMergesMcpEntry() async throws {

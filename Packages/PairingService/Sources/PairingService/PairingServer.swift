@@ -60,10 +60,12 @@ public final class PairingServer: @unchecked Sendable {
     }
 
     public func stop() {
-        listener?.cancel()
-        listener = nil
-        for c in connections.values { c.close() }
-        connections.removeAll()
+        queue.sync {
+            listener?.cancel()
+            listener = nil
+            for c in connections.values { c.close() }
+            connections.removeAll()
+        }
     }
 
     deinit { stop() }
@@ -72,7 +74,9 @@ public final class PairingServer: @unchecked Sendable {
     /// device ids that received it (useful for caller-side telemetry).
     @discardableResult
     public func broadcast(_ event: ServerEvent) -> [String] {
-        let snapshot = connections.values.filter { $0.record != nil }
+        let snapshot: [AuthenticatedConnection] = queue.sync {
+            connections.values.filter { $0.record != nil }
+        }
         var delivered: [String] = []
         for conn in snapshot {
             conn.send(.event(event))
@@ -82,13 +86,16 @@ public final class PairingServer: @unchecked Sendable {
     }
 
     public func sendTo(deviceId: String, event: ServerEvent) {
-        for conn in connections.values where conn.record?.id == deviceId {
+        let matches: [AuthenticatedConnection] = queue.sync {
+            connections.values.filter { $0.record?.id == deviceId }
+        }
+        for conn in matches {
             conn.send(.event(event))
         }
     }
 
     public func pairedDeviceIds() -> [String] {
-        connections.values.compactMap { $0.record?.id }
+        queue.sync { connections.values.compactMap { $0.record?.id } }
     }
 
     // MARK: - Connection lifecycle
@@ -106,7 +113,10 @@ public final class PairingServer: @unchecked Sendable {
                 Task { await self.commandHandler?(cmd, record) }
             },
             onClose: { [weak self] id in
-                self?.connections.removeValue(forKey: id)
+                guard let self else { return }
+                self.queue.async {
+                    self.connections.removeValue(forKey: id)
+                }
             }
         )
         connections[ObjectIdentifier(conn)] = conn

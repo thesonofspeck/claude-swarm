@@ -1,29 +1,14 @@
 import SwiftUI
 import AppCore
+import ClaudeSwarmNotifications
 
 @main
 struct ClaudeSwarmApp: App {
-    @StateObject private var env: AppEnvironment
-
-    init() {
-        do {
-            _env = StateObject(wrappedValue: try AppEnvironment())
-        } catch {
-            fatalError("Failed to start app environment: \(error)")
-        }
-    }
+    @StateObject private var bootstrap = AppBootstrap()
 
     var body: some Scene {
         WindowGroup {
-            RootSplitView()
-                .environmentObject(env)
-                .environmentObject(env.notifier)
-                .environmentObject(env.projectList)
-                .environmentObject(env.registry)
-                .frame(minWidth: 1100, minHeight: 700)
-                .background(Palette.bgBase)
-                .tint(Palette.blue)
-                .task { await env.notifier.requestAuthorization() }
+            BootstrapWindow(bootstrap: bootstrap)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
@@ -64,26 +49,112 @@ struct ClaudeSwarmApp: App {
         }
 
         Settings {
-            SettingsSheet()
-                .environmentObject(env)
-                .tint(Palette.blue)
+            BootstrapSettings(bootstrap: bootstrap)
         }
 
         MenuBarExtra {
-            MenuBarStatusView()
-                .environmentObject(env)
-                .environmentObject(env.notifier)
-                .environmentObject(env.projectList)
+            BootstrapMenuBar(bootstrap: bootstrap)
         } label: {
-            MenuBarLabel()
-                .environmentObject(env.notifier)
+            MenuBarLabel(bootstrap: bootstrap)
         }
         .menuBarExtraStyle(.window)
     }
 }
 
+@MainActor
+final class AppBootstrap: ObservableObject {
+    enum State {
+        case loading
+        case ready(AppEnvironment)
+        case failed(Error)
+    }
+
+    @Published var state: State = .loading
+
+    init() { retry() }
+
+    func retry() {
+        state = .loading
+        do {
+            state = .ready(try AppEnvironment())
+        } catch {
+            state = .failed(error)
+        }
+    }
+}
+
+private struct BootstrapWindow: View {
+    @ObservedObject var bootstrap: AppBootstrap
+
+    var body: some View {
+        switch bootstrap.state {
+        case .loading:
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Palette.bgBase)
+                .frame(minWidth: 1100, minHeight: 700)
+        case .ready(let env):
+            RootSplitView()
+                .environmentObject(env)
+                .environmentObject(env.notifier)
+                .environmentObject(env.projectList)
+                .environmentObject(env.registry)
+                .frame(minWidth: 1100, minHeight: 700)
+                .background(Palette.bgBase)
+                .tint(Palette.blue)
+                .task { await env.notifier.requestAuthorization() }
+        case .failed(let error):
+            RecoveryView(error: error) { bootstrap.retry() }
+                .frame(minWidth: 1100, minHeight: 700)
+        }
+    }
+}
+
+private struct BootstrapSettings: View {
+    @ObservedObject var bootstrap: AppBootstrap
+    var body: some View {
+        if case .ready(let env) = bootstrap.state {
+            SettingsSheet()
+                .environmentObject(env)
+                .tint(Palette.blue)
+        } else {
+            Text("Claude Swarm is not running.")
+                .foregroundStyle(Palette.fgMuted)
+                .padding()
+        }
+    }
+}
+
+private struct BootstrapMenuBar: View {
+    @ObservedObject var bootstrap: AppBootstrap
+    var body: some View {
+        if case .ready(let env) = bootstrap.state {
+            MenuBarStatusView()
+                .environmentObject(env)
+                .environmentObject(env.notifier)
+                .environmentObject(env.projectList)
+        } else {
+            Text("Claude Swarm is starting…")
+                .foregroundStyle(Palette.fgMuted)
+                .padding()
+        }
+    }
+}
+
 private struct MenuBarLabel: View {
-    @EnvironmentObject var notifier: Notifier
+    @ObservedObject var bootstrap: AppBootstrap
+    var body: some View {
+        switch bootstrap.state {
+        case .ready(let env):
+            MenuBarLabelInner(notifier: env.notifier)
+        default:
+            Image(systemName: "sparkles.rectangle.stack")
+        }
+    }
+}
+
+private struct MenuBarLabelInner: View {
+    @ObservedObject var notifier: Notifier
     var body: some View {
         let n = notifier.pendingSessionIds.count
         if n > 0 {
@@ -91,6 +162,63 @@ private struct MenuBarLabel: View {
         } else {
             Image(systemName: "sparkles.rectangle.stack")
         }
+    }
+}
+
+struct RecoveryView: View {
+    let error: Error
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: Metrics.Space.lg) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(Palette.red)
+            Text("Claude Swarm couldn't start")
+                .font(Type.display)
+                .foregroundStyle(Palette.fgBright)
+            Text(error.localizedDescription)
+                .font(Type.body)
+                .foregroundStyle(Palette.fgMuted)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 520)
+
+            VStack(spacing: Metrics.Space.sm) {
+                Button {
+                    onRetry()
+                } label: {
+                    Label("Retry", systemImage: "arrow.clockwise").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+
+                Button {
+                    NSWorkspace.shared.open(supportFolderURL)
+                } label: {
+                    Label("Open Application Support folder", systemImage: "folder").frame(maxWidth: .infinity)
+                }
+
+                Button {
+                    NSApp.terminate(nil)
+                } label: {
+                    Label("Quit", systemImage: "power").frame(maxWidth: .infinity)
+                }
+            }
+            .frame(maxWidth: 280)
+
+            Text("If the issue persists, move ~/Library/Application Support/ClaudeSwarm aside to reset local state.")
+                .font(Type.caption)
+                .foregroundStyle(Palette.fgMuted)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 480)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Palette.bgBase)
+    }
+
+    private var supportFolderURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("ClaudeSwarm", isDirectory: true)
     }
 }
 

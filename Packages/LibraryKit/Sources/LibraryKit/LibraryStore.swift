@@ -139,23 +139,48 @@ public actor LibraryStore {
 
     private func teamFileURL(for item: LibraryItem) -> URL? {
         guard let teamRoot else { return nil }
-        return teamRoot.appendingPathComponent(item.path)
+        // Reject path traversal in manifest entries. A team-controlled
+        // manifest can otherwise write outside the project (e.g.
+        // `path: "../../etc/passwd"`).
+        let resolved = teamRoot.appendingPathComponent(item.path).standardizedFileURL
+        let root = teamRoot.standardizedFileURL
+        guard resolved.path.hasPrefix(root.path + "/") else { return nil }
+        guard !item.path.contains("..") else { return nil }
+        return resolved
+    }
+
+    private func validatedDestination(in projectRoot: URL, relative: String) throws -> URL {
+        let dest = projectRoot.appendingPathComponent(relative).standardizedFileURL
+        let root = projectRoot.standardizedFileURL
+        guard dest.path.hasPrefix(root.path + "/") else {
+            throw SourceError.unsupported
+        }
+        return dest
     }
 
     private func installAgent(_ item: LibraryItem, projectRoot: URL) throws {
-        try copy(itemFileURL(item), to: projectRoot.appendingPathComponent(".claude/agents/\(item.id).md"))
+        let dest = try validatedDestination(in: projectRoot, relative: ".claude/agents/\(safeFilename(item.id)).md")
+        try copy(itemFileURL(item), to: dest)
     }
 
     private func installSkill(_ item: LibraryItem, projectRoot: URL) throws {
-        try copy(itemFileURL(item), to: projectRoot.appendingPathComponent(".claude/skills/\(item.id).md"))
+        let dest = try validatedDestination(in: projectRoot, relative: ".claude/skills/\(safeFilename(item.id)).md")
+        try copy(itemFileURL(item), to: dest)
     }
 
     private func installCommand(_ item: LibraryItem, projectRoot: URL) throws {
-        try copy(itemFileURL(item), to: projectRoot.appendingPathComponent(".claude/commands/\(item.id).md"))
+        let dest = try validatedDestination(in: projectRoot, relative: ".claude/commands/\(safeFilename(item.id)).md")
+        try copy(itemFileURL(item), to: dest)
     }
 
     private func installClaudeMd(_ item: LibraryItem, projectRoot: URL) throws {
-        try copy(itemFileURL(item), to: projectRoot.appendingPathComponent("CLAUDE.md"))
+        let dest = try validatedDestination(in: projectRoot, relative: "CLAUDE.md")
+        try copy(itemFileURL(item), to: dest)
+    }
+
+    private func safeFilename(_ id: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
+        return String(id.unicodeScalars.map { allowed.contains($0) ? Character($0) : "_" })
     }
 
     private func installMcp(_ item: LibraryItem, projectRoot: URL) throws {
@@ -212,10 +237,31 @@ public actor LibraryStore {
         try out.write(to: mcpURL, options: .atomic)
     }
 
+    /// Removes any hook command containing `${id}` (or the literal id) from
+    /// the project's `.claude/settings.json` `hooks` map. Bestguess based
+    /// on substring; users with custom hooks can still edit by hand.
     private func removeHookEntry(id: String, projectRoot: URL) throws {
-        // Best-effort: hooks merging is one-way. Caller can edit settings.json
-        // directly. We just bump the lock; no destructive change.
-        _ = id; _ = projectRoot
+        let settingsURL = projectRoot.appendingPathComponent(".claude/settings.json")
+        guard let data = try? Data(contentsOf: settingsURL),
+              var root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var hooks = root["hooks"] as? [String: Any] else { return }
+
+        for (eventName, value) in hooks {
+            guard var entries = value as? [Any] else { continue }
+            entries.removeAll { entry in
+                guard let dict = entry as? [String: Any] else { return false }
+                if let cmd = dict["command"] as? String, cmd.contains(id) { return true }
+                if let nested = dict["hooks"] as? [Any] {
+                    return nested.contains { ($0 as? [String: Any])?["command"] as? String == id
+                        || (($0 as? [String: Any])?["command"] as? String)?.contains(id) == true }
+                }
+                return false
+            }
+            hooks[eventName] = entries.isEmpty ? nil : entries
+        }
+        root["hooks"] = hooks
+        let out = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
+        try out.write(to: settingsURL, options: .atomic)
     }
 
     private func itemFileURL(_ item: LibraryItem) throws -> URL {
