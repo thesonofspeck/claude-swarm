@@ -9,10 +9,11 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.2.0"),
-        .package(path: "../SessionCore")
+        .package(path: "../SessionCore"),
+        .package(path: "../AtomPalette")
     ],
     targets: [
-        .target(name: "TerminalUI", dependencies: ["SwiftTerm", "SessionCore"]),
+        .target(name: "TerminalUI", dependencies: ["SwiftTerm", "SessionCore", "AtomPalette"]),
         .testTarget(name: "TerminalUITests", dependencies: ["TerminalUI"])
     ]
 )

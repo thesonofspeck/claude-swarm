@@ -34,6 +34,7 @@ packages:
   BrewInstaller:     { path: Packages/BrewInstaller }
   LibraryKit:        { path: Packages/LibraryKit }
   AnthropicClient:   { path: Packages/AnthropicClient }
+  AtomPalette:       { path: Packages/AtomPalette }
 
 targets:
   ClaudeSwarm:
@@ -103,6 +104,8 @@ targets:
         product: LibraryKit
       - package: AnthropicClient
         product: AnthropicClient
+      - package: AtomPalette
+        product: AtomPalette
 
   swarm-memory-mcp:
     type: tool

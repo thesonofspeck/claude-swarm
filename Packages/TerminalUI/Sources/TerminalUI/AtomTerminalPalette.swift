@@ -1,59 +1,84 @@
 import Foundation
 import AppKit
 import SwiftTerm
+import AtomPalette
 
 /// Atom One Light + Dark 16-color ANSI palettes for the embedded terminal.
+/// Hex values come from the shared AtomPalette package.
 public enum AtomTerminalPalette {
     public static func currentColors() -> [SwiftTerm.Color] {
-        let isDark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .vibrantDark]) != nil
-        return isDark ? darkColors : lightColors
+        isDarkAppearance() ? darkColors : lightColors
     }
 
     public static func currentBackground() -> NSColor {
-        isDarkAppearance() ? hex(0x282C34) : hex(0xFAFAFA)
+        ns(isDarkAppearance() ? AtomHex.bgBase.dark : AtomHex.bgBase.light)
     }
 
     public static func currentForeground() -> NSColor {
-        isDarkAppearance() ? hex(0xABB2BF) : hex(0x383A42)
+        ns(isDarkAppearance() ? AtomHex.fg.dark : AtomHex.fg.light)
     }
 
     public static func currentCursor() -> NSColor {
-        isDarkAppearance() ? hex(0x61AFEF) : hex(0x4078F2)
+        ns(isDarkAppearance() ? AtomHex.blue.dark : AtomHex.blue.light)
     }
 
     public static func currentSelection() -> NSColor {
-        isDarkAppearance() ? hex(0x3E4451, alpha: 1) : hex(0xE5E5E6, alpha: 1)
+        ns(isDarkAppearance() ? AtomHex.bgSelection.dark : AtomHex.bgSelection.light)
     }
 
     private static func isDarkAppearance() -> Bool {
         NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .vibrantDark]) != nil
     }
 
+    /// Standard ANSI 16: 0..7 are normal, 8..15 are bright. Maps roughly
+    /// to the Atom palette: black/red/green/yellow/blue/magenta/cyan/white.
     private static let darkColors: [SwiftTerm.Color] = [
-        c(0x282C34), c(0xE06C75), c(0x98C379), c(0xE5C07B),
-        c(0x61AFEF), c(0xC678DD), c(0x56B6C2), c(0xABB2BF),
-        c(0x5C6370), c(0xE06C75), c(0x98C379), c(0xE5C07B),
-        c(0x61AFEF), c(0xC678DD), c(0x56B6C2), c(0xFFFFFF)
+        st(AtomHex.bgBase.dark),
+        st(AtomHex.red.dark),
+        st(AtomHex.green.dark),
+        st(AtomHex.yellow.dark),
+        st(AtomHex.blue.dark),
+        st(AtomHex.purple.dark),
+        st(AtomHex.cyan.dark),
+        st(AtomHex.fg.dark),
+        st(AtomHex.fgMuted.dark),
+        st(AtomHex.red.dark),
+        st(AtomHex.green.dark),
+        st(AtomHex.yellow.dark),
+        st(AtomHex.blue.dark),
+        st(AtomHex.purple.dark),
+        st(AtomHex.cyan.dark),
+        st(0xFFFFFF)
     ]
 
     private static let lightColors: [SwiftTerm.Color] = [
-        c(0x383A42), c(0xE45649), c(0x50A14F), c(0xC18401),
-        c(0x4078F2), c(0xA626A4), c(0x0184BC), c(0xFAFAFA),
-        c(0xA0A1A7), c(0xE45649), c(0x50A14F), c(0xC18401),
-        c(0x4078F2), c(0xA626A4), c(0x0184BC), c(0xFFFFFF)
+        st(AtomHex.fg.light),
+        st(AtomHex.red.light),
+        st(AtomHex.green.light),
+        st(AtomHex.yellow.light),
+        st(AtomHex.blue.light),
+        st(AtomHex.purple.light),
+        st(AtomHex.cyan.light),
+        st(AtomHex.bgBase.light),
+        st(AtomHex.fgMuted.light),
+        st(AtomHex.red.light),
+        st(AtomHex.green.light),
+        st(AtomHex.yellow.light),
+        st(AtomHex.blue.light),
+        st(AtomHex.purple.light),
+        st(AtomHex.cyan.light),
+        st(0xFFFFFF)
     ]
 
-    private static func c(_ hex: UInt32) -> SwiftTerm.Color {
+    private static func st(_ hex: UInt32) -> SwiftTerm.Color {
         let r = UInt16((hex >> 16) & 0xFF) * 0x101
         let g = UInt16((hex >>  8) & 0xFF) * 0x101
         let b = UInt16( hex        & 0xFF) * 0x101
         return SwiftTerm.Color(red: r, green: g, blue: b)
     }
 
-    private static func hex(_ hex: UInt32, alpha: Double = 1) -> NSColor {
-        let r = CGFloat((hex >> 16) & 0xFF) / 255
-        let g = CGFloat((hex >>  8) & 0xFF) / 255
-        let b = CGFloat( hex        & 0xFF) / 255
-        return NSColor(srgbRed: r, green: g, blue: b, alpha: CGFloat(alpha))
+    private static func ns(_ hex: UInt32) -> NSColor {
+        let (r, g, b) = HexToRGB.rgb(hex)
+        return NSColor(srgbRed: CGFloat(r), green: CGFloat(g), blue: CGFloat(b), alpha: 1)
     }
 }

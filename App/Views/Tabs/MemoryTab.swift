@@ -11,8 +11,7 @@ struct MemoryTab: View {
     @State private var entries: [MemoryEntry] = []
     @State private var query = ""
     @State private var scope: Scope = .project
-    @State private var loading = false
-    @State private var error: String?
+    @StateObject private var ops = AsyncTracker()
     @State private var selection: String?
 
     enum Scope: String, CaseIterable, Identifiable {
@@ -25,14 +24,14 @@ struct MemoryTab: View {
         VStack(spacing: 0) {
             controls
             Divider().background(Palette.divider)
-            if let error {
+            if let error = ops.error {
                 EmptyState(
                     title: "Memory error",
                     systemImage: "exclamationmark.triangle",
                     description: error,
                     tint: Palette.red
                 )
-            } else if loading {
+            } else if ops.isLoading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if entries.isEmpty {
                 EmptyState(
@@ -167,34 +166,25 @@ struct MemoryTab: View {
     }
 
     private func load() async {
-        await MainActor.run { loading = true; error = nil }
-        do {
-            let namespaces = scopesToNamespaces()
-            let q = query
-            let memory = env.memory
-            let collected = try await withThrowingTaskGroup(of: [MemoryEntry].self) { group in
+        let namespaces = scopesToNamespaces()
+        let q = query
+        let memory = env.memory
+        let collected = await ops.run {
+            try await withThrowingTaskGroup(of: [MemoryEntry].self) { group in
                 for ns in namespaces {
                     group.addTask {
-                        if q.isEmpty {
-                            return try await memory.list(namespace: ns, limit: 100)
-                        } else {
-                            return try await memory.search(q, namespace: ns, limit: 50)
-                        }
+                        q.isEmpty
+                            ? try await memory.list(namespace: ns, limit: 100)
+                            : try await memory.search(q, namespace: ns, limit: 50)
                     }
                 }
                 var out: [MemoryEntry] = []
                 for try await chunk in group { out.append(contentsOf: chunk) }
                 return out
             }
-            await MainActor.run {
-                entries = collected.sorted { $0.updatedAt > $1.updatedAt }
-                loading = false
-            }
-        } catch {
-            await MainActor.run {
-                self.error = "\(error)"
-                loading = false
-            }
+        }
+        if let collected {
+            entries = collected.sorted { $0.updatedAt > $1.updatedAt }
         }
     }
 

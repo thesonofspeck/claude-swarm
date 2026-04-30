@@ -1,43 +1,39 @@
 import SwiftUI
 import AppKit
+import AtomPalette
 
-/// Atom One palette — Light when the system is in Light Appearance, Dark when
-/// it's in Dark. Each `Palette` token exposes a SwiftUI `Color` whose value
-/// resolves dynamically from an underlying `NSColor` so the same token works
-/// in light and dark without per-view `colorScheme` checks.
+/// Atom One palette as SwiftUI Colors that resolve per system appearance.
+/// Hex values come from AtomPalette so iOS, the diff viewer, the
+/// terminal, and the icon generator all stay in lockstep.
 public enum Palette {
-    // Surfaces (back to front)
-    public static let bgDeep        = dynamic(light: 0xF5F5F5, dark: 0x181A1F) // window edge / divider
-    public static let bgSidebar     = dynamic(light: 0xF0F0F0, dark: 0x21252B) // sidebar / inspector
-    public static let bgBase        = dynamic(light: 0xFAFAFA, dark: 0x282C34) // editor / detail
-    public static let bgRaised      = dynamic(light: 0xFFFFFF, dark: 0x2C313A) // cards / hover
-    public static let bgSelection   = dynamic(light: 0xE5E5E6, dark: 0x3E4451) // selected row / line
-    public static let divider       = dynamic(light: 0xDCDDE0, dark: 0x181A1F)
+    public static let bgDeep        = dyn(AtomHex.bgDeep)
+    public static let bgSidebar     = dyn(AtomHex.bgSidebar)
+    public static let bgBase        = dyn(AtomHex.bgBase)
+    public static let bgRaised      = dyn(AtomHex.bgRaised)
+    public static let bgSelection   = dyn(AtomHex.bgSelection)
+    public static let divider       = dyn(AtomHex.divider)
 
-    // Text
-    public static let fg            = dynamic(light: 0x383A42, dark: 0xABB2BF) // primary
-    public static let fgMuted       = dynamic(light: 0xA0A1A7, dark: 0x5C6370) // secondary / comments
-    public static let fgBright      = dynamic(light: 0x202227, dark: 0xE5E5E5) // headlines
+    public static let fg            = dyn(AtomHex.fg)
+    public static let fgMuted       = dyn(AtomHex.fgMuted)
+    public static let fgBright      = dyn(AtomHex.fgBright)
 
-    // Syntax / accents (the ones every Atom theme is famous for)
-    public static let blue          = dynamic(light: 0x4078F2, dark: 0x61AFEF) // accent / functions
-    public static let purple        = dynamic(light: 0xA626A4, dark: 0xC678DD) // keywords
-    public static let red           = dynamic(light: 0xE45649, dark: 0xE06C75) // errors / deletions
-    public static let orange        = dynamic(light: 0x986801, dark: 0xD19A66) // numbers / constants
-    public static let yellow        = dynamic(light: 0xC18401, dark: 0xE5C07B) // classes / warnings
-    public static let green         = dynamic(light: 0x50A14F, dark: 0x98C379) // strings / additions
-    public static let cyan          = dynamic(light: 0x0184BC, dark: 0x56B6C2) // regex / escapes
+    public static let blue          = dyn(AtomHex.blue)
+    public static let purple        = dyn(AtomHex.purple)
+    public static let red           = dyn(AtomHex.red)
+    public static let orange        = dyn(AtomHex.orange)
+    public static let yellow        = dyn(AtomHex.yellow)
+    public static let green         = dyn(AtomHex.green)
+    public static let cyan          = dyn(AtomHex.cyan)
 
-    // Translucent overlays (for diff hunks, status pills, hover backgrounds)
-    public static let addBg         = dynamic(light: 0x50A14F, dark: 0x98C379, alpha: 0.14)
-    public static let delBg         = dynamic(light: 0xE45649, dark: 0xE06C75, alpha: 0.14)
-    public static let warnBg        = dynamic(light: 0xC18401, dark: 0xE5C07B, alpha: 0.18)
-    public static let pillBg        = dynamic(light: 0x000000, dark: 0xFFFFFF, alpha: 0.06)
+    public static let addBg   = dyn(AtomHex.green, alpha: AtomHex.translucentAlpha)
+    public static let delBg   = dyn(AtomHex.red,   alpha: AtomHex.translucentAlpha)
+    public static let warnBg  = dyn(AtomHex.yellow, alpha: AtomHex.warningAlpha)
+    public static let pillBg  = dyn(AtomHex.Pair(light: 0x000000, dark: 0xFFFFFF), alpha: AtomHex.pillAlpha)
 
-    private static func dynamic(light lightHex: UInt32, dark darkHex: UInt32, alpha: Double = 1) -> Color {
+    private static func dyn(_ pair: AtomHex.Pair, alpha: Double = 1) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .vibrantDark, .accessibilityHighContrastDarkAqua, .accessibilityHighContrastVibrantDark]) != nil
-            return NSColor(hex: isDark ? darkHex : lightHex, alpha: alpha)
+            return NSColor(hex: isDark ? pair.dark : pair.light, alpha: alpha)
         })
     }
 }
@@ -83,9 +79,7 @@ public enum Type {
 
 private extension NSColor {
     convenience init(hex: UInt32, alpha: Double = 1) {
-        let r = CGFloat((hex >> 16) & 0xFF) / 255
-        let g = CGFloat((hex >>  8) & 0xFF) / 255
-        let b = CGFloat( hex        & 0xFF) / 255
-        self.init(srgbRed: r, green: g, blue: b, alpha: CGFloat(alpha))
+        let (r, g, b) = HexToRGB.rgb(hex)
+        self.init(srgbRed: CGFloat(r), green: CGFloat(g), blue: CGFloat(b), alpha: CGFloat(alpha))
     }
 }

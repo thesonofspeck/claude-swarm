@@ -14,6 +14,7 @@ settings:
 
 packages:
   PairingProtocol: { path: ../Packages/PairingProtocol }
+  AtomPalette:     { path: ../Packages/AtomPalette }
 
 targets:
   ClaudeSwarmRemote:
@@ -47,3 +48,5 @@ targets:
     dependencies:
       - package: PairingProtocol
         product: PairingProtocol
+      - package: AtomPalette
+        product: AtomPalette

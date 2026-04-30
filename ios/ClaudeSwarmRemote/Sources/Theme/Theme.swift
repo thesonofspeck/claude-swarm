@@ -1,32 +1,34 @@
 import SwiftUI
 import UIKit
+import AtomPalette
 
-/// Atom One palette mirrored on iOS. Resolves per appearance via UIColor's
-/// dynamic-provider initialiser so the same token works in light and dark.
+/// Atom One palette as iOS-side SwiftUI Colors. Hex values come from the
+/// shared AtomPalette package; this file is just the platform wrapper
+/// around UIColor's dynamic-provider initialiser.
 enum Palette {
-    static let bgDeep        = dynamic(light: 0xF5F5F5, dark: 0x181A1F)
-    static let bgSidebar     = dynamic(light: 0xF0F0F0, dark: 0x21252B)
-    static let bgBase        = dynamic(light: 0xFAFAFA, dark: 0x282C34)
-    static let bgRaised      = dynamic(light: 0xFFFFFF, dark: 0x2C313A)
-    static let bgSelection   = dynamic(light: 0xE5E5E6, dark: 0x3E4451)
-    static let divider       = dynamic(light: 0xDCDDE0, dark: 0x181A1F)
+    static let bgDeep        = dyn(AtomHex.bgDeep)
+    static let bgSidebar     = dyn(AtomHex.bgSidebar)
+    static let bgBase        = dyn(AtomHex.bgBase)
+    static let bgRaised      = dyn(AtomHex.bgRaised)
+    static let bgSelection   = dyn(AtomHex.bgSelection)
+    static let divider       = dyn(AtomHex.divider)
 
-    static let fg            = dynamic(light: 0x383A42, dark: 0xABB2BF)
-    static let fgMuted       = dynamic(light: 0xA0A1A7, dark: 0x5C6370)
-    static let fgBright      = dynamic(light: 0x202227, dark: 0xE5E5E5)
+    static let fg            = dyn(AtomHex.fg)
+    static let fgMuted       = dyn(AtomHex.fgMuted)
+    static let fgBright      = dyn(AtomHex.fgBright)
 
-    static let blue          = dynamic(light: 0x4078F2, dark: 0x61AFEF)
-    static let purple        = dynamic(light: 0xA626A4, dark: 0xC678DD)
-    static let red           = dynamic(light: 0xE45649, dark: 0xE06C75)
-    static let orange        = dynamic(light: 0x986801, dark: 0xD19A66)
-    static let yellow        = dynamic(light: 0xC18401, dark: 0xE5C07B)
-    static let green         = dynamic(light: 0x50A14F, dark: 0x98C379)
-    static let cyan          = dynamic(light: 0x0184BC, dark: 0x56B6C2)
+    static let blue          = dyn(AtomHex.blue)
+    static let purple        = dyn(AtomHex.purple)
+    static let red           = dyn(AtomHex.red)
+    static let orange        = dyn(AtomHex.orange)
+    static let yellow        = dyn(AtomHex.yellow)
+    static let green         = dyn(AtomHex.green)
+    static let cyan          = dyn(AtomHex.cyan)
 
-    private static func dynamic(light lightHex: UInt32, dark darkHex: UInt32, alpha: CGFloat = 1) -> Color {
+    private static func dyn(_ pair: AtomHex.Pair, alpha: CGFloat = 1) -> Color {
         Color(uiColor: UIColor { trait in
             let isDark = trait.userInterfaceStyle == .dark
-            return UIColor(hex: isDark ? darkHex : lightHex, alpha: alpha)
+            return UIColor(hex: isDark ? pair.dark : pair.light, alpha: alpha)
         })
     }
 }
@@ -58,10 +60,8 @@ enum AppType {
 
 private extension UIColor {
     convenience init(hex: UInt32, alpha: CGFloat = 1) {
-        let r = CGFloat((hex >> 16) & 0xFF) / 255
-        let g = CGFloat((hex >>  8) & 0xFF) / 255
-        let b = CGFloat( hex        & 0xFF) / 255
-        self.init(red: r, green: g, blue: b, alpha: alpha)
+        let (r, g, b) = HexToRGB.rgb(hex)
+        self.init(red: CGFloat(r), green: CGFloat(g), blue: CGFloat(b), alpha: alpha)
     }
 }
 

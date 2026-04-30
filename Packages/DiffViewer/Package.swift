@@ -9,10 +9,11 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../GitKit"),
+        .package(path: "../AtomPalette"),
         .package(url: "https://github.com/JohnSundell/Splash.git", from: "0.16.0")
     ],
     targets: [
-        .target(name: "DiffViewer", dependencies: ["GitKit", "Splash"]),
+        .target(name: "DiffViewer", dependencies: ["GitKit", "AtomPalette", "Splash"]),
         .testTarget(name: "DiffViewerTests", dependencies: ["DiffViewer"])
     ]
 )
