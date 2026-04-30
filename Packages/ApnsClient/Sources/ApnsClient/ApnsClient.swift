@@ -1,6 +1,6 @@
 import Foundation
 
-public actor ApnsClient {
+public actor ApnsClient: PushSender {
     public enum ApnsError: Error, LocalizedError {
         case notConfigured
         case noKey
@@ -29,6 +29,10 @@ public actor ApnsClient {
         cfg.httpMaximumConnectionsPerHost = 4
         cfg.timeoutIntervalForRequest = 20
         self.session = URLSession(configuration: cfg)
+    }
+
+    public func send(payload: [String: Any], to deviceToken: String, collapseId: String?) async throws {
+        _ = try await send(payload: payload, to: deviceToken, priority: 10, collapseId: collapseId)
     }
 
     /// Send a rich notification to a single device. Caller composes the

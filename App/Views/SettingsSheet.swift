@@ -28,10 +28,10 @@ struct SettingsSheet: View {
             iPhoneTab
                 .tabItem { Label("iPhone", systemImage: "iphone.gen3") }
             apnsTab
-                .tabItem { Label("APNs", systemImage: "bell.badge") }
+                .tabItem { Label("Push", systemImage: "bell.badge") }
         }
         .padding()
-        .frame(width: 580, height: 480)
+        .frame(width: 620, height: 540)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Done") {
@@ -194,9 +194,76 @@ struct SettingsSheet: View {
     @State private var apnsEnvironment: ApnsConfig.Environment = .production
     @State private var apnsEnabled = false
     @State private var apnsKeyLoaded = false
+    @State private var pushBackend: PushBackend = .direct
+    @State private var relayURL = ""
+    @State private var relaySecret = ""
+    @State private var relayEnabled = false
+    @State private var relaySecretStored = false
 
     private var apnsTab: some View {
         Form {
+            Section("Backend") {
+                Picker("Send pushes via", selection: $pushBackend) {
+                    Text("Company relay (recommended)").tag(PushBackend.relay)
+                    Text("Direct from this Mac").tag(PushBackend.direct)
+                }
+                .pickerStyle(.inline)
+                Text(pushBackend == .relay
+                    ? "This Mac POSTs to your team's relay; the relay holds the .p8 key. No Developer Program seat needed here."
+                    : "This Mac talks directly to APNs using a .p8 key stored locally. Each teammate needs their own key.")
+                    .font(Type.caption)
+                    .foregroundStyle(Palette.fgMuted)
+            }
+            if pushBackend == .relay {
+                relaySection
+            } else {
+                directSection
+            }
+            Section {
+                Button("Save push settings") { saveApns() }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .formStyle(.grouped)
+        .task { reloadApns() }
+    }
+
+    private var relaySection: some View {
+        Group {
+            Section("Relay") {
+                TextField("Relay URL (https://swarm-push.internal/push)", text: $relayURL)
+                Toggle("Send pushes via relay", isOn: $relayEnabled)
+            }
+            Section("Shared secret") {
+                if relaySecretStored {
+                    HStack {
+                        Image(systemName: "key.fill").foregroundStyle(Palette.green)
+                        Text("Secret stored in Keychain")
+                        Spacer()
+                        Button("Replace") { relaySecretStored = false; relaySecret = "" }
+                    }
+                } else {
+                    SecureField("Shared secret", text: $relaySecret)
+                    Button("Save secret") {
+                        do {
+                            try env.remote.saveRelaySecret(relaySecret)
+                            relaySecretStored = true
+                            relaySecret = ""
+                        } catch {
+                            self.error = "\(error)"
+                        }
+                    }
+                    .disabled(relaySecret.isEmpty)
+                }
+                Text("Ask your relay operator for the URL and secret. The Mac signs each push with HMAC-SHA256(secret, timestamp + body).")
+                    .font(Type.caption)
+                    .foregroundStyle(Palette.fgMuted)
+            }
+        }
+    }
+
+    private var directSection: some View {
+        Group {
             Section("Apple Developer credentials") {
                 TextField("Team ID", text: $apnsTeamId)
                 TextField("Key ID", text: $apnsKeyId)
@@ -205,7 +272,7 @@ struct SettingsSheet: View {
                     Text("Production").tag(ApnsConfig.Environment.production)
                     Text("Sandbox").tag(ApnsConfig.Environment.sandbox)
                 }
-                Toggle("Send pushes to paired devices", isOn: $apnsEnabled)
+                Toggle("Send pushes directly", isOn: $apnsEnabled)
             }
             Section("APNs key (.p8)") {
                 if apnsKeyLoaded {
@@ -228,15 +295,7 @@ struct SettingsSheet: View {
                     .buttonStyle(.borderedProminent)
                 }
             }
-            Section {
-                Button("Save APNs settings") {
-                    saveApns()
-                }
-                .keyboardShortcut(.defaultAction)
-            }
         }
-        .formStyle(.grouped)
-        .task { reloadApns() }
     }
 
     private func uploadKey() {
@@ -257,23 +316,34 @@ struct SettingsSheet: View {
     }
 
     private func saveApns() {
-        var cfg = env.remote.apnsConfig
-        cfg.teamId = apnsTeamId
-        cfg.keyId = apnsKeyId
-        cfg.bundleId = apnsBundleId
-        cfg.environment = apnsEnvironment
-        cfg.enabled = apnsEnabled
-        env.remote.saveApnsConfig(cfg)
+        env.remote.pushBackend = pushBackend
+        var direct = env.remote.apnsConfig
+        direct.teamId = apnsTeamId
+        direct.keyId = apnsKeyId
+        direct.bundleId = apnsBundleId
+        direct.environment = apnsEnvironment
+        direct.enabled = apnsEnabled
+        env.remote.saveApnsConfig(direct)
+
+        var relay = env.remote.relayConfig
+        relay.url = relayURL
+        relay.enabled = relayEnabled
+        env.remote.saveRelayConfig(relay)
     }
 
     private func reloadApns() {
-        let cfg = env.remote.apnsConfig
-        apnsTeamId = cfg.teamId
-        apnsKeyId = cfg.keyId
-        apnsBundleId = cfg.bundleId
-        apnsEnvironment = cfg.environment
-        apnsEnabled = cfg.enabled
+        let direct = env.remote.apnsConfig
+        apnsTeamId = direct.teamId
+        apnsKeyId = direct.keyId
+        apnsBundleId = direct.bundleId
+        apnsEnvironment = direct.environment
+        apnsEnabled = direct.enabled
         apnsKeyLoaded = env.remote.hasApnsKey()
+        let relay = env.remote.relayConfig
+        relayURL = relay.url
+        relayEnabled = relay.enabled
+        relaySecretStored = env.remote.hasRelaySecret()
+        pushBackend = env.remote.pushBackend
     }
 
     private func refresh() async {

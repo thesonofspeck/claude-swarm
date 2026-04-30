@@ -20,8 +20,21 @@ import ClaudeSwarmNotifications
 public final class RemoteCoordinator: ObservableObject {
     @Published public private(set) var pairedDevices: [PairRecord] = []
     @Published public private(set) var liveDeviceIds: Set<String> = []
-    @Published public var apnsConfig: ApnsConfig
+    @Published public var pushConfig: PushBackendConfig
     @Published public private(set) var sleepGuardHeld: Bool = false
+
+    public var apnsConfig: ApnsConfig {
+        get { pushConfig.direct }
+        set { pushConfig.direct = newValue; saveConfig() }
+    }
+    public var relayConfig: RelayConfig {
+        get { pushConfig.relay }
+        set { pushConfig.relay = newValue; saveConfig() }
+    }
+    public var pushBackend: PushBackend {
+        get { pushConfig.backend }
+        set { pushConfig.backend = newValue; saveConfig(); rebuildSender() }
+    }
 
     public let store: PairStore
     public let invites: PairingInviteService
@@ -37,7 +50,7 @@ public final class RemoteCoordinator: ObservableObject {
     private let macId: String
     private let macName: String
     private let configURL: URL
-    private var apnsClient: ApnsClient?
+    private var sender: PushSender?
 
     public init(
         macId: String,
@@ -61,15 +74,18 @@ public final class RemoteCoordinator: ObservableObject {
         self.sleepGuard = SleepGuard()
 
         try AppDirectories.ensureExists()
-        self.configURL = AppDirectories.supportRoot.appendingPathComponent("apns.json")
+        self.configURL = AppDirectories.supportRoot.appendingPathComponent("push.json")
         if let data = try? Data(contentsOf: configURL),
-           let cfg = try? JSONDecoder().decode(ApnsConfig.self, from: data) {
-            self.apnsConfig = cfg
+           let cfg = try? JSONDecoder().decode(PushBackendConfig.self, from: data) {
+            self.pushConfig = cfg
+        } else if let legacyData = try? Data(contentsOf: AppDirectories.supportRoot.appendingPathComponent("apns.json")),
+                  let legacy = try? JSONDecoder().decode(ApnsConfig.self, from: legacyData) {
+            self.pushConfig = PushBackendConfig(backend: .direct, direct: legacy, relay: .init())
         } else {
-            self.apnsConfig = ApnsConfig()
+            self.pushConfig = PushBackendConfig()
         }
 
-        rebuildApnsClient()
+        rebuildSender()
         try server.start()
         Task { await self.refreshPaired() }
 
@@ -106,28 +122,53 @@ public final class RemoteCoordinator: ObservableObject {
     // MARK: - APNs config + key
 
     public func saveApnsConfig(_ cfg: ApnsConfig) {
-        apnsConfig = cfg
-        try? JSONEncoder().encode(cfg).write(to: configURL, options: .atomic)
-        rebuildApnsClient()
+        pushConfig.direct = cfg
+        saveConfig()
+        rebuildSender()
+    }
+
+    public func saveRelayConfig(_ cfg: RelayConfig) {
+        pushConfig.relay = cfg
+        saveConfig()
+        rebuildSender()
     }
 
     public func saveApnsKey(pem: String) throws {
         try apnsKeychain.set(pem, account: ApnsKeyStorage.keyAccount)
-        rebuildApnsClient()
+        rebuildSender()
     }
 
     public func removeApnsKey() {
         try? apnsKeychain.remove(account: ApnsKeyStorage.keyAccount)
-        rebuildApnsClient()
+        rebuildSender()
     }
 
     public func hasApnsKey() -> Bool {
         (try? apnsKeychain.get(account: ApnsKeyStorage.keyAccount)) != nil
     }
 
-    private func rebuildApnsClient() {
-        let pem = try? apnsKeychain.get(account: ApnsKeyStorage.keyAccount)
-        apnsClient = ApnsClient(config: apnsConfig, p8Pem: pem)
+    public func saveRelaySecret(_ secret: String) throws {
+        try apnsKeychain.set(secret, account: pushConfig.relay.sharedSecretAccount)
+        rebuildSender()
+    }
+
+    public func hasRelaySecret() -> Bool {
+        (try? apnsKeychain.get(account: pushConfig.relay.sharedSecretAccount)) != nil
+    }
+
+    private func saveConfig() {
+        try? JSONEncoder().encode(pushConfig).write(to: configURL, options: .atomic)
+    }
+
+    private func rebuildSender() {
+        switch pushConfig.backend {
+        case .direct:
+            let pem = try? apnsKeychain.get(account: ApnsKeyStorage.keyAccount)
+            sender = ApnsClient(config: pushConfig.direct, p8Pem: pem)
+        case .relay:
+            let secret = (try? apnsKeychain.get(account: pushConfig.relay.sharedSecretAccount)) ?? ""
+            sender = RelayPushSender(config: pushConfig.relay, sharedSecret: secret)
+        }
     }
 
     // MARK: - Fan-out
@@ -176,10 +217,13 @@ public final class RemoteCoordinator: ObservableObject {
     }
 
     private func pushAll(payload: [String: Any], collapseId: String) async {
-        guard let client = apnsClient, apnsConfig.enabled else { return }
+        guard let sender else { return }
+        let backendEnabled = (pushConfig.backend == .direct && pushConfig.direct.enabled)
+            || (pushConfig.backend == .relay && pushConfig.relay.enabled)
+        guard backendEnabled else { return }
         let recipients = await store.all().compactMap { $0.apnsToken }
         for token in recipients {
-            _ = try? await client.send(payload: payload, to: token, collapseId: collapseId)
+            _ = try? await sender.send(payload: payload, to: token, collapseId: collapseId)
         }
     }
 
