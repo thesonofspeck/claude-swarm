@@ -1,0 +1,66 @@
+import SwiftUI
+import SwiftTerm
+import SessionCore
+
+/// SwiftUI wrapper around SwiftTerm's `LocalProcessTerminalView`. Owns the
+/// PTY that runs the `claude` CLI for one session.
+public struct PTYTerminalView: NSViewRepresentable {
+    public let spec: SessionSpec
+    public let onExit: (Int32) -> Void
+
+    public init(spec: SessionSpec, onExit: @escaping (Int32) -> Void = { _ in }) {
+        self.spec = spec
+        self.onExit = onExit
+    }
+
+    public func makeNSView(context: Context) -> LocalProcessTerminalView {
+        let view = LocalProcessTerminalView(frame: .zero)
+        view.processDelegate = context.coordinator
+        context.coordinator.recorder = try? TranscriptRecorder(url: spec.transcriptURL)
+
+        var env = ProcessInfo.processInfo.environment
+        for (k, v) in spec.environment { env[k] = v }
+        let envArray = env.map { "\($0)=\($1)" }
+
+        view.startProcess(
+            executable: spec.claudeExecutable,
+            args: spec.claudeArguments,
+            environment: envArray,
+            execName: nil
+        )
+
+        if let prompt = spec.initialPrompt, !prompt.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                view.send(txt: prompt + "\n")
+            }
+        }
+        return view
+    }
+
+    public func updateNSView(_ nsView: LocalProcessTerminalView, context: Context) {}
+
+    public func makeCoordinator() -> Coordinator {
+        Coordinator(onExit: onExit)
+    }
+
+    public final class Coordinator: NSObject, LocalProcessTerminalViewDelegate {
+        let onExit: (Int32) -> Void
+        var recorder: TranscriptRecorder?
+
+        init(onExit: @escaping (Int32) -> Void) {
+            self.onExit = onExit
+        }
+
+        public func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
+
+        public func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
+
+        public func hostCurrentDirectoryUpdate(source: LocalProcessTerminalView, directory: String?) {}
+
+        public func processTerminated(source: LocalProcessTerminalView, exitCode: Int32?) {
+            recorder?.close()
+            onExit(exitCode ?? -1)
+        }
+    }
+}
+
