@@ -23,8 +23,14 @@ public final class AppEnvironment: ObservableObject {
     public let installer: Installer
     public let diff: DiffService
     public let history: HistoryService
+    public let registry: RunningSessionRegistry
+    public let projectList: ProjectListViewModel
+
+    @Published public var settings: AppSettings
+    @Published public var lastError: String?
 
     private let hookServer: HookSocketServer
+    private let settingsURL: URL
 
     public init() throws {
         try AppDirectories.ensureExists()
@@ -35,27 +41,98 @@ public final class AppEnvironment: ObservableObject {
         self.projects = ProjectRepository(db: db)
         self.sessionsRepo = SessionRepository(db: db)
         self.wrike = WrikeClient(keychain: keychain)
-        self.github = GitHubClient(keychain: keychain)
+        self.github = GitHubClient()
         self.memory = try MemoryStore()
-        self.sessionManager = SessionManager(sessions: sessionsRepo, projects: projects)
-        let notifier = Notifier()
-        self.notifier = notifier
         self.installer = Installer()
         self.diff = DiffService()
         self.history = HistoryService()
+        self.registry = RunningSessionRegistry()
+        let notifier = Notifier()
+        self.notifier = notifier
 
-        let server = HookSocketServer(socketURL: AppDirectories.hooksSocket) { event in
+        let notifyScript = try AppPaths.materializeNotifyScript()
+        let memoryBin = AppPaths.memoryBinary()
+        let manager = SessionManager(
+            sessions: sessionsRepo,
+            projects: projects,
+            installer: installer,
+            memoryBinaryPath: memoryBin.path,
+            notifyScriptPath: notifyScript.path
+        )
+        self.sessionManager = manager
+        self.projectList = ProjectListViewModel(
+            projects: projects,
+            sessions: sessionsRepo,
+            manager: manager
+        )
+
+        self.settingsURL = AppDirectories.supportRoot.appendingPathComponent("settings.json")
+        self.settings = AppSettings.load(from: settingsURL) ?? AppSettings()
+
+        let registryRef = self.registry
+        let repoRef = self.sessionsRepo
+        let server = HookSocketServer(socketURL: AppDirectories.hooksSocket) { [weak notifier] event in
             Task { @MainActor in
-                guard event.kind == .notification, let id = event.sessionId else { return }
-                notifier.sessionNeedsInput(
-                    sessionId: id,
-                    title: "Session needs input",
-                    body: event.message ?? "",
-                    isForeground: false
-                )
+                guard let id = event.sessionId else { return }
+                let isForeground = (registryRef.foregroundSessionId == id)
+                switch event.kind {
+                case .notification:
+                    notifier?.sessionNeedsInput(
+                        sessionId: id,
+                        title: "Session needs input",
+                        body: event.message ?? "",
+                        isForeground: isForeground
+                    )
+                    try? repoRef.setStatus(id: id, .waitingForInput)
+                case .stop:
+                    try? repoRef.setStatus(id: id, .idle)
+                case .sessionStart:
+                    try? repoRef.setStatus(id: id, .running)
+                case .other:
+                    break
+                }
             }
         }
         self.hookServer = server
         try server.start()
+    }
+
+    public func saveSettings() {
+        do {
+            try settings.save(to: settingsURL)
+        } catch {
+            lastError = "Could not save settings: \(error)"
+        }
+    }
+}
+
+public struct AppSettings: Codable, Equatable {
+    public var claudeExecutable: String
+    public var defaultBaseBranch: String
+    public var notificationSoundEnabled: Bool
+    public var hasCompletedOnboarding: Bool
+
+    public init(
+        claudeExecutable: String = "/usr/local/bin/claude",
+        defaultBaseBranch: String = "main",
+        notificationSoundEnabled: Bool = true,
+        hasCompletedOnboarding: Bool = false
+    ) {
+        self.claudeExecutable = claudeExecutable
+        self.defaultBaseBranch = defaultBaseBranch
+        self.notificationSoundEnabled = notificationSoundEnabled
+        self.hasCompletedOnboarding = hasCompletedOnboarding
+    }
+
+    static func load(from url: URL) -> AppSettings? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(AppSettings.self, from: data)
+    }
+
+    func save(to url: URL) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(self)
+        try data.write(to: url, options: .atomic)
     }
 }

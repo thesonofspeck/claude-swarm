@@ -7,11 +7,8 @@ let package = Package(
     products: [
         .library(name: "GitHubKit", targets: ["GitHubKit"])
     ],
-    dependencies: [
-        .package(path: "../KeychainKit")
-    ],
     targets: [
-        .target(name: "GitHubKit", dependencies: ["KeychainKit"]),
+        .target(name: "GitHubKit"),
         .testTarget(name: "GitHubKitTests", dependencies: ["GitHubKit"])
     ]
 )

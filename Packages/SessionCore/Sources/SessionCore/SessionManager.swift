@@ -1,6 +1,7 @@
 import Foundation
 import GitKit
 import PersistenceKit
+import AgentBootstrap
 
 public actor SessionManager {
     public struct StartResult: Sendable {
@@ -11,21 +12,42 @@ public actor SessionManager {
     public let sessions: SessionRepository
     public let projects: ProjectRepository
     public let worktrees: WorktreeService
+    public let installer: Installer
     public let transcriptsRoot: URL
     public let worktreesRoot: URL
+    public let memoryBinaryPath: String
+    public let notifyScriptPath: String
 
     public init(
         sessions: SessionRepository,
         projects: ProjectRepository,
         worktrees: WorktreeService = WorktreeService(),
+        installer: Installer = Installer(),
         transcriptsRoot: URL = AppDirectories.transcriptsDir,
-        worktreesRoot: URL = AppDirectories.worktreesRoot
+        worktreesRoot: URL = AppDirectories.worktreesRoot,
+        memoryBinaryPath: String,
+        notifyScriptPath: String
     ) {
         self.sessions = sessions
         self.projects = projects
         self.worktrees = worktrees
+        self.installer = installer
         self.transcriptsRoot = transcriptsRoot
         self.worktreesRoot = worktreesRoot
+        self.memoryBinaryPath = memoryBinaryPath
+        self.notifyScriptPath = notifyScriptPath
+    }
+
+    /// Bootstraps a project on registration: installs the 6 default subagents,
+    /// hooks, and the memory MCP server config into the project root.
+    public func bootstrap(project: Project) throws {
+        let plan = BootstrapPlan(
+            projectURL: URL(fileURLWithPath: project.localPath),
+            projectId: project.id,
+            memoryBinaryPath: memoryBinaryPath,
+            notifyScriptPath: notifyScriptPath
+        )
+        try installer.install(plan, overwrite: false)
     }
 
     public func start(
@@ -35,6 +57,10 @@ public actor SessionManager {
         initialPrompt: String?,
         claudeExecutable: String = "/usr/local/bin/claude"
     ) async throws -> StartResult {
+        // Ensure agents and MCP config are present in the repo root before
+        // we spawn `claude` from a worktree of it.
+        try bootstrap(project: project)
+
         let sessionId = UUID().uuidString
         let branch = BranchNamer.branch(taskId: taskId, title: taskTitle)
         let repoSlug = sanitize(project.name)
@@ -70,6 +96,18 @@ public actor SessionManager {
             "CLAUDE_SWARM_HOOK_SOCKET": AppDirectories.hooksSocket.path
         ]
 
+        // The team-lead is the entry agent. We pass the task as the initial
+        // prompt; the session's worktree contains a .claude/agents/ directory
+        // where Claude Code finds the subagents.
+        let promptParts: [String] = [
+            "You are running as the team-lead agent for project \"\(project.name)\".",
+            taskTitle.isEmpty ? nil : "Task: \(taskTitle)",
+            taskId.flatMap { id in id.isEmpty ? nil : "Wrike: \(id)" },
+            initialPrompt
+        ].compactMap { $0 }
+
+        let composedPrompt = promptParts.joined(separator: "\n\n")
+
         let spec = SessionSpec(
             id: sessionId,
             projectId: project.id,
@@ -80,7 +118,7 @@ public actor SessionManager {
             baseBranch: project.defaultBaseBranch,
             taskId: taskId,
             taskTitle: taskTitle,
-            initialPrompt: initialPrompt,
+            initialPrompt: composedPrompt.isEmpty ? nil : composedPrompt,
             claudeExecutable: claudeExecutable,
             environment: env,
             transcriptURL: transcriptURL

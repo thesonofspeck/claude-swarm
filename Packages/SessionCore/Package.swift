@@ -9,10 +9,11 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../PersistenceKit"),
-        .package(path: "../GitKit")
+        .package(path: "../GitKit"),
+        .package(path: "../AgentBootstrap")
     ],
     targets: [
-        .target(name: "SessionCore", dependencies: ["PersistenceKit", "GitKit"]),
+        .target(name: "SessionCore", dependencies: ["PersistenceKit", "GitKit", "AgentBootstrap"]),
         .testTarget(name: "SessionCoreTests", dependencies: ["SessionCore"])
     ]
 )

@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-public struct Project: Codable, Identifiable, Equatable, FetchableRecord, MutablePersistableRecord {
+public struct Project: Codable, Identifiable, Equatable, Hashable, FetchableRecord, MutablePersistableRecord {
     public var id: String
     public var name: String
     public var localPath: String
@@ -34,7 +34,7 @@ public struct Project: Codable, Identifiable, Equatable, FetchableRecord, Mutabl
     }
 }
 
-public enum SessionStatus: String, Codable, CaseIterable {
+public enum SessionStatus: String, Codable, CaseIterable, Hashable {
     case starting
     case running
     case waitingForInput
@@ -46,7 +46,7 @@ public enum SessionStatus: String, Codable, CaseIterable {
     case failed
 }
 
-public struct Session: Codable, Identifiable, Equatable, FetchableRecord, MutablePersistableRecord {
+public struct Session: Codable, Identifiable, Equatable, Hashable, FetchableRecord, MutablePersistableRecord {
     public var id: String
     public var projectId: String
     public var taskId: String?

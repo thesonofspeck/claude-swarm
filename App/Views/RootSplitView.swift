@@ -6,6 +6,7 @@ struct RootSplitView: View {
     @EnvironmentObject var env: AppEnvironment
     @State private var selectedSession: Session?
     @State private var inspectorVisible = true
+    @State private var showOnboarding = false
 
     var body: some View {
         NavigationSplitView {
@@ -35,6 +36,15 @@ struct RootSplitView: View {
                     Image(systemName: "sidebar.right")
                 }
                 .help("Toggle inspector")
+                .keyboardShortcut("i", modifiers: [.command, .option])
+            }
+        }
+        .sheet(isPresented: $showOnboarding) {
+            OnboardingSheet().environmentObject(env)
+        }
+        .onAppear {
+            if !env.settings.hasCompletedOnboarding {
+                showOnboarding = true
             }
         }
     }

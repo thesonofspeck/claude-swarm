@@ -5,25 +5,39 @@ import ClaudeSwarmNotifications
 
 struct SidebarView: View {
     @EnvironmentObject var env: AppEnvironment
-    @StateObject private var vm: VMHolder = VMHolder()
+    @EnvironmentObject var projectList: ProjectListViewModel
+    @EnvironmentObject var notifier: Notifier
     @Binding var selectedSession: Session?
     @State private var showingAddProject = false
+    @State private var showingSettings = false
 
     var body: some View {
         List(selection: $selectedSession) {
-            ForEach(vm.projects) { project in
-                Section(project.name) {
-                    let sessions = vm.sessions(for: project.id)
-                    ForEach(sessions) { session in
-                        sessionRow(session)
-                            .tag(session)
-                    }
-                    Button {
-                    } label: {
-                        Label("New session", systemImage: "plus.circle")
+            ForEach(projectList.projects) { project in
+                Section {
+                    let sessions = projectList.sessions(for: project.id)
+                    if sessions.isEmpty {
+                        Text("No sessions yet")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
+                            .padding(.vertical, 4)
+                    } else {
+                        ForEach(sessions) { session in
+                            sessionRow(session).tag(session)
+                        }
                     }
-                    .buttonStyle(.plain)
+                } header: {
+                    HStack {
+                        Text(project.name)
+                        Spacer()
+                        let needsInputCount = projectList.sessions(for: project.id)
+                            .filter { notifier.pendingSessionIds.contains($0.id) }.count
+                        if needsInputCount > 0 {
+                            Text("\(needsInputCount)●")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.yellow)
+                        }
+                    }
                 }
             }
 
@@ -36,15 +50,25 @@ struct SidebarView: View {
             .padding(.top, 8)
         }
         .listStyle(.sidebar)
-        .task { vm.bind(to: env) }
         .sheet(isPresented: $showingAddProject) {
             AddProjectSheet().environmentObject(env)
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsSheet().environmentObject(env)
+        }
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button { showingSettings = true } label: {
+                    Image(systemName: "gearshape")
+                }
+                .help("Settings")
+            }
         }
     }
 
     @ViewBuilder
     private func sessionRow(_ session: Session) -> some View {
-        let needsInput = env.notifier.pendingSessionIds.contains(session.id)
+        let needsInput = notifier.pendingSessionIds.contains(session.id)
         HStack(spacing: 8) {
             Circle()
                 .fill(needsInput ? Color.yellow : Color.clear)
@@ -64,63 +88,67 @@ struct SidebarView: View {
     }
 }
 
-@MainActor
-final class VMHolder: ObservableObject {
-    @Published var projects: [PersistenceKit.Project] = []
-    @Published var sessionsByProject: [String: [Session]] = [:]
-
-    func bind(to env: AppEnvironment) {
-        let list = ProjectListViewModel(env: env)
-        self.projects = list.projects
-        self.sessionsByProject = list.sessionsByProject
-    }
-
-    func sessions(for projectId: String) -> [Session] {
-        sessionsByProject[projectId] ?? []
-    }
-}
-
 struct AddProjectSheet: View {
     @EnvironmentObject var env: AppEnvironment
+    @EnvironmentObject var projectList: ProjectListViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var path = ""
     @State private var baseBranch = "main"
     @State private var wrikeFolder = ""
+    @State private var creating = false
+    @State private var error: String?
 
     var body: some View {
         Form {
             Section("Project") {
                 TextField("Name", text: $name)
-                TextField("Local path", text: $path)
+                HStack {
+                    TextField("Local path", text: $path)
+                    Button("Choose…") { chooseDirectory() }
+                }
                 TextField("Default base branch", text: $baseBranch)
             }
             Section("Wrike") {
-                TextField("Folder ID", text: $wrikeFolder)
+                TextField("Folder ID (optional)", text: $wrikeFolder)
+            }
+            if let error {
+                Section { Text(error).foregroundStyle(.red) }
             }
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 480, height: 320)
+        .frame(width: 480, height: 360)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
             }
             ToolbarItem(placement: .confirmationAction) {
-                Button("Add") {
-                    do {
-                        let project = PersistenceKit.Project(
-                            name: name,
-                            localPath: path,
-                            defaultBaseBranch: baseBranch,
-                            wrikeFolderId: wrikeFolder.isEmpty ? nil : wrikeFolder
+                Button(creating ? "Adding…" : "Add") {
+                    Task {
+                        creating = true
+                        await projectList.register(
+                            name: name, path: path, baseBranch: baseBranch,
+                            wrikeFolder: wrikeFolder.isEmpty ? nil : wrikeFolder
                         )
-                        try env.projects.upsert(project)
-                        dismiss()
-                    } catch {}
+                        creating = false
+                        if projectList.error == nil { dismiss() }
+                        else { error = projectList.error }
+                    }
                 }
-                .disabled(name.isEmpty || path.isEmpty)
+                .disabled(name.isEmpty || path.isEmpty || creating)
             }
+        }
+    }
+
+    private func chooseDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            path = url.path
+            if name.isEmpty { name = url.lastPathComponent }
         }
     }
 }

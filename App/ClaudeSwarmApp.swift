@@ -17,8 +17,13 @@ struct ClaudeSwarmApp: App {
         WindowGroup {
             RootSplitView()
                 .environmentObject(env)
+                .environmentObject(env.notifier)
+                .environmentObject(env.projectList)
+                .environmentObject(env.registry)
                 .frame(minWidth: 1100, minHeight: 700)
-                .task { await env.notifier.requestAuthorization() }
+                .task {
+                    await env.notifier.requestAuthorization()
+                }
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
@@ -27,6 +32,11 @@ struct ClaudeSwarmApp: App {
                 Button("New Session") {}
                     .keyboardShortcut("n", modifiers: .command)
             }
+        }
+
+        Settings {
+            SettingsSheet()
+                .environmentObject(env)
         }
     }
 }

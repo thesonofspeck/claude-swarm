@@ -38,72 +38,87 @@ enum DetailTab: String, CaseIterable, Identifiable {
 }
 
 struct DetailView: View {
+    @EnvironmentObject var env: AppEnvironment
+    @EnvironmentObject var registry: RunningSessionRegistry
     let session: Session?
     @State private var tab: DetailTab = .terminal
 
+    var project: Project? {
+        guard let session else { return nil }
+        return try? env.projects.find(id: session.projectId)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Tab", selection: $tab) {
-                ForEach(DetailTab.allCases) { t in
-                    Label(t.label, systemImage: t.systemImage).tag(t)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(8)
-            .background(.ultraThinMaterial)
-
+            tabBar
             Divider()
-
-            if let session {
-                content(for: session)
-                    .transition(.opacity.combined(with: .move(edge: .trailing)))
-                    .animation(.easeInOut(duration: 0.18), value: tab)
-            } else {
-                ContentUnavailableView(
-                    "No session selected",
-                    systemImage: "rectangle.dashed",
-                    description: Text("Pick a session from the sidebar or create a new one.")
-                )
-            }
+            content
+                .transition(.opacity.combined(with: .move(edge: .trailing)))
+                .animation(.easeInOut(duration: 0.18), value: tab)
+        }
+        .onChange(of: session?.id) { _, newId in
+            registry.setForeground(newId)
         }
     }
 
+    private var tabBar: some View {
+        Picker("Tab", selection: $tab) {
+            ForEach(DetailTab.allCases) { t in
+                Label(t.label, systemImage: t.systemImage).tag(t)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .padding(8)
+        .background(.ultraThinMaterial)
+    }
+
     @ViewBuilder
-    private func content(for session: Session) -> some View {
-        switch tab {
-        case .terminal: TerminalTab(session: session)
-        case .files: FilesTab(session: session)
-        case .diff: DiffTab(session: session)
-        case .history: HistoryTab(session: session)
-        case .pr: PRTab(session: session)
-        case .tasks: TasksTab(session: session)
-        case .memory: MemoryTab(session: session)
-        case .agents: AgentsTab(session: session)
+    private var content: some View {
+        if let session {
+            switch tab {
+            case .terminal: TerminalTab(session: session)
+            case .files: FilesTab(session: session)
+            case .diff: DiffTab(session: session)
+            case .history: HistoryTab(session: session)
+            case .pr: PRTab(session: session, project: project)
+            case .tasks: TasksTab(session: session, project: project)
+            case .memory: MemoryTab(project: project, session: session)
+            case .agents: AgentsTab(project: project)
+            }
+        } else {
+            ContentUnavailableView(
+                "No session selected",
+                systemImage: "rectangle.dashed",
+                description: Text("Pick a session from the sidebar or start a new one from the Tasks tab.")
+            )
         }
     }
 }
 
 struct TerminalTab: View {
     @EnvironmentObject var env: AppEnvironment
+    @EnvironmentObject var registry: RunningSessionRegistry
     let session: Session
 
     var body: some View {
-        // Session must already be running (spawned by SessionManager); the
-        // PTYTerminalView attaches to a fresh `claude` invocation. In a fuller
-        // build, the running PTY is held in AppEnvironment so re-renders reuse it.
-        Text("Terminal placeholder for session \(session.id)")
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .foregroundStyle(.secondary)
-    }
-}
-
-struct FilesTab: View {
-    let session: Session
-    var body: some View {
-        Text("Files browser: \(session.worktreePath)")
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .foregroundStyle(.secondary)
+        Group {
+            if let spec = registry.spec(for: session.id) {
+                PTYTerminalView(spec: spec) { _ in
+                    Task { @MainActor in
+                        try? env.sessionsRepo.setStatus(id: session.id, .finished)
+                        registry.remove(id: session.id)
+                    }
+                }
+            } else {
+                ContentUnavailableView(
+                    "Session not running",
+                    systemImage: "powerplug",
+                    description: Text("This session was started in a previous app launch. Start a new session from the Tasks tab.")
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -134,67 +149,39 @@ struct HistoryTab: View {
     @EnvironmentObject var env: AppEnvironment
     let session: Session
     @State private var commits: [CommitSummary] = []
+    @State private var selection: String?
+    @State private var commitDiff: [DiffFile] = []
 
     var body: some View {
-        List(commits) { c in
-            VStack(alignment: .leading, spacing: 4) {
-                Text(c.subject).font(.callout)
-                HStack {
-                    Text(c.id.prefix(7))
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                    Text(c.author).font(.caption).foregroundStyle(.secondary)
-                    Text(c.date.formatted(.relative(presentation: .named)))
-                        .font(.caption).foregroundStyle(.secondary)
+        HSplitView {
+            List(commits, selection: $selection) { c in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(c.subject).font(.callout)
+                    HStack {
+                        Text(c.id.prefix(7))
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Text(c.author).font(.caption).foregroundStyle(.secondary)
+                        Text(c.date.formatted(.relative(presentation: .named)))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
+                .tag(Optional(c.id))
+            }
+            .frame(minWidth: 320)
+            .task(id: session.id) {
+                let url = URL(fileURLWithPath: session.worktreePath)
+                commits = (try? await env.history.log(in: url)) ?? []
+            }
+
+            DiffView(files: commitDiff)
+        }
+        .onChange(of: selection) { _, sha in
+            guard let sha else { commitDiff = []; return }
+            Task {
+                let url = URL(fileURLWithPath: session.worktreePath)
+                commitDiff = (try? await env.diff.commitDiff(in: url, sha: sha)) ?? []
             }
         }
-        .task(id: session.id) {
-            let url = URL(fileURLWithPath: session.worktreePath)
-            commits = (try? await env.history.log(in: url)) ?? []
-        }
-    }
-}
-
-struct PRTab: View {
-    let session: Session
-    var body: some View {
-        VStack(spacing: 12) {
-            Text("PR view")
-                .font(.headline)
-            Text(session.prNumber.map { "#\($0)" } ?? "No PR yet")
-                .foregroundStyle(.secondary)
-            Button("Open PR on GitHub") {}
-                .disabled(session.prNumber == nil)
-            Button("Push branch + Create PR") {}
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-struct TasksTab: View {
-    let session: Session
-    var body: some View {
-        Text("Wrike tasks for this project")
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .foregroundStyle(.secondary)
-    }
-}
-
-struct MemoryTab: View {
-    let session: Session
-    var body: some View {
-        Text("Memory entries for this project / session")
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .foregroundStyle(.secondary)
-    }
-}
-
-struct AgentsTab: View {
-    let session: Session
-    var body: some View {
-        Text("View / customize the 6 default subagents for this project")
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .foregroundStyle(.secondary)
     }
 }

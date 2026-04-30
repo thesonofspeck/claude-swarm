@@ -6,12 +6,16 @@ public actor WrikeClient {
         case missingToken
         case http(status: Int, body: String)
         case decoding(Error)
+        case rateLimited(retryAfter: TimeInterval)
+        case transport(Error)
 
         public var errorDescription: String? {
             switch self {
-            case .missingToken: return "No Wrike token in Keychain"
+            case .missingToken: return "No Wrike token in Keychain. Add one in Settings."
             case .http(let s, let b): return "Wrike HTTP \(s): \(b)"
             case .decoding(let e): return "Wrike decode failed: \(e)"
+            case .rateLimited(let s): return "Wrike rate-limited; retry in \(Int(s))s"
+            case .transport(let e): return "Wrike network error: \(e)"
             }
         }
     }
@@ -19,27 +23,36 @@ public actor WrikeClient {
     public let baseURL: URL
     public let session: URLSession
     public let keychain: Keychain
+    public let maxRetries: Int
 
     public init(
-        baseURL: URL = URL(string: "https://www.wrike.com/api/v4")!,
+        baseURL: URL = URL(string: "https://www.wrike.com/api/v4/")!,
         session: URLSession = .shared,
-        keychain: Keychain = Keychain()
+        keychain: Keychain = Keychain(),
+        maxRetries: Int = 3
     ) {
         self.baseURL = baseURL
         self.session = session
         self.keychain = keychain
+        self.maxRetries = maxRetries
     }
 
     public func setToken(_ token: String) throws {
         try keychain.set(token, account: KeychainAccount.wrike)
     }
 
+    public func hasToken() -> Bool {
+        (try? keychain.get(account: KeychainAccount.wrike)) != nil
+    }
+
+    // MARK: - Endpoints
+
     public func tasks(in folderId: String) async throws -> [WrikeTask] {
-        try await getList("folders/\(folderId)/tasks?fields=[description]")
+        try await getList("folders/\(folderId)/tasks?fields=%5Bdescription%5D")
     }
 
     public func task(id: String) async throws -> WrikeTask? {
-        try await getList("tasks/\(id)?fields=[description]").first
+        try await getList("tasks/\(id)?fields=%5Bdescription%5D").first
     }
 
     public func folders() async throws -> [WrikeFolder] {
@@ -47,30 +60,72 @@ public actor WrikeClient {
     }
 
     public func customStatuses() async throws -> [WrikeCustomStatus] {
-        try await getList("workflows")
+        try await getList("customstatuses")
     }
 
-    private func getList<T: Codable>(_ path: String) async throws -> [T] {
+    // MARK: - HTTP plumbing
+
+    private func getList<T: Decodable>(_ path: String) async throws -> [T] {
         let token: String
         do { token = try keychain.get(account: KeychainAccount.wrike) }
         catch { throw WrikeError.missingToken }
 
-        let url = baseURL.appendingPathComponent(path)
+        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
+            throw WrikeError.http(status: -1, body: "invalid url for path \(path)")
+        }
         var req = URLRequest(url: url)
+        req.timeoutInterval = 20
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let (data, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw WrikeError.http(status: status, body: String(decoding: data, as: UTF8.self))
+        var attempt = 0
+        while true {
+            attempt += 1
+            do {
+                let (data, response) = try await session.data(for: req)
+                guard let http = response as? HTTPURLResponse else {
+                    throw WrikeError.http(status: -1, body: "non-HTTP response")
+                }
+                switch http.statusCode {
+                case 200..<300:
+                    let decoder = JSONDecoder()
+                    decoder.dateDecodingStrategy = .iso8601
+                    do {
+                        return try decoder.decode(WrikeEnvelope<T>.self, from: data).data
+                    } catch {
+                        throw WrikeError.decoding(error)
+                    }
+                case 401, 403:
+                    throw WrikeError.http(status: http.statusCode, body: bodyString(data))
+                case 429:
+                    let retry = (http.value(forHTTPHeaderField: "Retry-After")
+                        .flatMap(Double.init)) ?? pow(2.0, Double(attempt))
+                    if attempt > maxRetries {
+                        throw WrikeError.rateLimited(retryAfter: retry)
+                    }
+                    try await Task.sleep(nanoseconds: UInt64(retry * 1_000_000_000))
+                case 500..<600:
+                    if attempt > maxRetries {
+                        throw WrikeError.http(status: http.statusCode, body: bodyString(data))
+                    }
+                    let backoff = pow(2.0, Double(attempt))
+                    try await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
+                default:
+                    throw WrikeError.http(status: http.statusCode, body: bodyString(data))
+                }
+            } catch let error as WrikeError {
+                throw error
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                if attempt > maxRetries { throw WrikeError.transport(error) }
+                let backoff = pow(2.0, Double(attempt))
+                try await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
+            }
         }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        do {
-            return try decoder.decode(WrikeEnvelope<T>.self, from: data).data
-        } catch {
-            throw WrikeError.decoding(error)
-        }
+    }
+
+    private func bodyString(_ data: Data) -> String {
+        String(decoding: data, as: UTF8.self)
     }
 }
