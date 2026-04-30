@@ -32,6 +32,7 @@ packages:
   SleepGuard:        { path: Packages/SleepGuard }
   ToolDetector:      { path: Packages/ToolDetector }
   BrewInstaller:     { path: Packages/BrewInstaller }
+  LibraryKit:        { path: Packages/LibraryKit }
 
 targets:
   ClaudeSwarm:
@@ -97,6 +98,8 @@ targets:
         product: ToolDetector
       - package: BrewInstaller
         product: BrewInstaller
+      - package: LibraryKit
+        product: LibraryKit
 
   swarm-memory-mcp:
     type: tool

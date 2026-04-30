@@ -30,6 +30,7 @@ jobs:
           - ApnsClient
           - SleepGuard
           - ToolDetector
+          - LibraryKit
     steps:
       - uses: actions/checkout@v4
 

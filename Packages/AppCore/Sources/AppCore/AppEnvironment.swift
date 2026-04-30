@@ -5,6 +5,7 @@ import GitKit
 import WrikeKit
 import GitHubKit
 import GitKit
+import LibraryKit
 import SessionCore
 import MemoryService
 import ClaudeSwarmNotifications
@@ -29,6 +30,7 @@ public final class AppEnvironment: ObservableObject {
     public let projectList: ProjectListViewModel
     public let wrikeBridge: WrikeBridge
     public let remote: RemoteCoordinator
+    public let library: LibraryStore
 
     @Published public var settings: AppSettings
     @Published public var lastError: String?
@@ -83,6 +85,10 @@ public final class AppEnvironment: ObservableObject {
             macId: AppEnvironment.stableMacId(),
             macName: Host.current().localizedName ?? "Mac"
         )
+
+        let libraryCache = AppDirectories.supportRoot.appendingPathComponent("library-cache", isDirectory: true)
+        let libSource = TeamLibrarySource(cacheRoot: libraryCache)
+        self.library = LibraryStore(teamSource: libSource)
         let remoteRef = self.remote
         let projectsRef = self.projects
         remote.onSendInput = { sessionId, text in
@@ -216,6 +222,7 @@ public struct AppSettings: Codable, Equatable {
     public var quietHoursEnabled: Bool
     public var quietHoursStartMinute: Int   // minutes since 00:00 local time
     public var quietHoursEndMinute: Int
+    public var teamLibrary: TeamLibraryConfig
 
     public init(
         claudeExecutable: String = "/usr/local/bin/claude",
@@ -227,7 +234,8 @@ public struct AppSettings: Codable, Equatable {
         hasCompletedOnboarding: Bool = false,
         quietHoursEnabled: Bool = false,
         quietHoursStartMinute: Int = 19 * 60,
-        quietHoursEndMinute: Int = 8 * 60
+        quietHoursEndMinute: Int = 8 * 60,
+        teamLibrary: TeamLibraryConfig = .disabled
     ) {
         self.claudeExecutable = claudeExecutable
         self.ghExecutable = ghExecutable
@@ -239,6 +247,7 @@ public struct AppSettings: Codable, Equatable {
         self.quietHoursEnabled = quietHoursEnabled
         self.quietHoursStartMinute = quietHoursStartMinute
         self.quietHoursEndMinute = quietHoursEndMinute
+        self.teamLibrary = teamLibrary
     }
 
     public func isInQuietHours(now: Date = Date(), calendar: Calendar = .current) -> Bool {
@@ -264,12 +273,14 @@ public struct AppSettings: Codable, Equatable {
         quietHoursEnabled = (try? c.decode(Bool.self, forKey: .quietHoursEnabled)) ?? false
         quietHoursStartMinute = (try? c.decode(Int.self, forKey: .quietHoursStartMinute)) ?? 19 * 60
         quietHoursEndMinute = (try? c.decode(Int.self, forKey: .quietHoursEndMinute)) ?? 8 * 60
+        teamLibrary = (try? c.decode(TeamLibraryConfig.self, forKey: .teamLibrary)) ?? .disabled
     }
 
     private enum CodingKeys: String, CodingKey {
         case claudeExecutable, ghExecutable, gitExecutable, pythonExecutable
         case defaultBaseBranch, notificationSoundEnabled, hasCompletedOnboarding
         case quietHoursEnabled, quietHoursStartMinute, quietHoursEndMinute
+        case teamLibrary
     }
 
     static func load(from url: URL) -> AppSettings? {
