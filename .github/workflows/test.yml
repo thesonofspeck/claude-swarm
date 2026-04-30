@@ -25,6 +25,10 @@ jobs:
           - MemoryService
           - SessionCore
           - AgentBootstrap
+          - PairingProtocol
+          - PairingService
+          - ApnsClient
+          - SleepGuard
     steps:
       - uses: actions/checkout@v4
 

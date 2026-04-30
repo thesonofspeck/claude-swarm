@@ -26,6 +26,10 @@ packages:
   MemoryService:     { path: Packages/MemoryService }
   NotificationCenter: { path: Packages/NotificationCenter }
   AgentBootstrap:    { path: Packages/AgentBootstrap }
+  PairingProtocol:   { path: Packages/PairingProtocol }
+  PairingService:    { path: Packages/PairingService }
+  ApnsClient:        { path: Packages/ApnsClient }
+  SleepGuard:        { path: Packages/SleepGuard }
 
 targets:
   ClaudeSwarm:
@@ -79,6 +83,14 @@ targets:
         product: ClaudeSwarmNotifications
       - package: AgentBootstrap
         product: AgentBootstrap
+      - package: PairingProtocol
+        product: PairingProtocol
+      - package: PairingService
+        product: PairingService
+      - package: ApnsClient
+        product: ApnsClient
+      - package: SleepGuard
+        product: SleepGuard
 
   swarm-memory-mcp:
     type: tool

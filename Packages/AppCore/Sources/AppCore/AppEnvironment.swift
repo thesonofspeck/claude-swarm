@@ -8,6 +8,7 @@ import SessionCore
 import MemoryService
 import ClaudeSwarmNotifications
 import AgentBootstrap
+import PairingProtocol
 
 @MainActor
 public final class AppEnvironment: ObservableObject {
@@ -26,6 +27,7 @@ public final class AppEnvironment: ObservableObject {
     public let registry: RunningSessionRegistry
     public let projectList: ProjectListViewModel
     public let wrikeBridge: WrikeBridge
+    public let remote: RemoteCoordinator
 
     @Published public var settings: AppSettings
     @Published public var lastError: String?
@@ -72,6 +74,33 @@ public final class AppEnvironment: ObservableObject {
         self.settingsURL = AppDirectories.settingsURL
         self.settings = AppSettings.load(from: settingsURL) ?? AppSettings()
 
+        self.remote = try RemoteCoordinator(
+            macId: AppEnvironment.stableMacId(),
+            macName: Host.current().localizedName ?? "Mac"
+        )
+        let remoteRef = self.remote
+        let projectsRef = self.projects
+        remote.onSendInput = { sessionId, text in
+            // Hook back into the running session via the PTY's stdin —
+            // requires the session to be alive in the registry. Drop if not.
+            await MainActor.run {
+                NotificationCenter.default.post(
+                    name: .swarmRemoteInput,
+                    object: nil,
+                    userInfo: ["sessionId": sessionId, "text": text]
+                )
+            }
+        }
+        remote.onApproval = { approvalId, response in
+            await MainActor.run {
+                NotificationCenter.default.post(
+                    name: .swarmRemoteApproval,
+                    object: nil,
+                    userInfo: ["approvalId": approvalId, "response": response.rawValue]
+                )
+            }
+        }
+
         let registryRef = self.registry
         let repoRef = self.sessionsRepo
         let janitor = WorktreeJanitor(projects: projects, sessions: sessionsRepo)
@@ -82,7 +111,7 @@ public final class AppEnvironment: ObservableObject {
             await indexer.reindexAll()
         }
 
-        let server = HookSocketServer(socketURL: AppDirectories.hooksSocket) { [weak notifier] event in
+        let server = HookSocketServer(socketURL: AppDirectories.hooksSocket) { [weak notifier, weak remoteRef] event in
             Task { @MainActor in
                 guard let id = event.sessionId else { return }
                 if let status = event.resultingStatus {
@@ -96,6 +125,35 @@ public final class AppEnvironment: ObservableObject {
                         body: event.message ?? "",
                         isForeground: isForeground
                     )
+                    if let session = try? repoRef.find(id: id),
+                       let project = try? projectsRef.find(id: session.projectId),
+                       let remote = remoteRef {
+                        let approval = ApprovalRequest(
+                            id: UUID().uuidString,
+                            sessionId: id,
+                            projectName: project.name,
+                            taskTitle: session.taskTitle,
+                            prompt: event.message ?? "Claude needs your input.",
+                            toolCall: nil,
+                            createdAt: Date()
+                        )
+                        remote.broadcastApproval(approval)
+                    }
+                }
+                if let remote = remoteRef,
+                   let session = try? repoRef.find(id: id),
+                   let project = try? projectsRef.find(id: session.projectId) {
+                    let payload = SessionSummary(
+                        id: session.id,
+                        projectId: session.projectId,
+                        projectName: project.name,
+                        taskTitle: session.taskTitle,
+                        branch: session.branch,
+                        status: SessionStatusPayload(rawValue: session.status.rawValue) ?? .running,
+                        needsInput: session.status == .waitingForInput,
+                        updatedAt: session.updatedAt
+                    )
+                    remote.broadcast(payload)
                 }
             }
         }
@@ -110,6 +168,22 @@ public final class AppEnvironment: ObservableObject {
             lastError = "Could not save settings: \(error)"
         }
     }
+
+    /// Stable per-install identifier persisted alongside other support
+    /// data. Used as the macId in the wire protocol so iOS can recognise
+    /// the same Mac across reboots.
+    static func stableMacId() -> String {
+        let url = AppDirectories.supportRoot.appendingPathComponent("mac-id")
+        if let id = try? String(contentsOf: url, encoding: .utf8), !id.isEmpty { return id }
+        let id = UUID().uuidString
+        try? id.write(to: url, atomically: true, encoding: .utf8)
+        return id
+    }
+}
+
+public extension Notification.Name {
+    static let swarmRemoteInput = Notification.Name("ClaudeSwarm.RemoteInput")
+    static let swarmRemoteApproval = Notification.Name("ClaudeSwarm.RemoteApproval")
 }
 
 public struct AppSettings: Codable, Equatable {

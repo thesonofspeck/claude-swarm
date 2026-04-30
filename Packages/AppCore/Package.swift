@@ -16,7 +16,11 @@ let package = Package(
         .package(path: "../SessionCore"),
         .package(path: "../MemoryService"),
         .package(path: "../NotificationCenter"),
-        .package(path: "../AgentBootstrap")
+        .package(path: "../AgentBootstrap"),
+        .package(path: "../PairingProtocol"),
+        .package(path: "../PairingService"),
+        .package(path: "../ApnsClient"),
+        .package(path: "../SleepGuard")
     ],
     targets: [
         .target(
@@ -30,7 +34,11 @@ let package = Package(
                 "SessionCore",
                 "MemoryService",
                 .product(name: "ClaudeSwarmNotifications", package: "NotificationCenter"),
-                "AgentBootstrap"
+                "AgentBootstrap",
+                "PairingProtocol",
+                "PairingService",
+                "ApnsClient",
+                "SleepGuard"
             ]
         ),
         .testTarget(name: "AppCoreTests", dependencies: ["AppCore"])
