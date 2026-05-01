@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import PairingProtocol
 import UIKit
 
@@ -6,9 +7,10 @@ import UIKit
 /// string; we open a one-shot WebSocket, send a PairRequest, await the
 /// PairResult, persist it, and return.
 @MainActor
-final class PairingViewModel: ObservableObject {
-    @Published var status: Status = .idle
-    @Published var lastError: String?
+@Observable
+final class PairingViewModel {
+    var status: Status = .idle
+    var lastError: String?
 
     enum Status: Equatable {
         case idle

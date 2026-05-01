@@ -2,7 +2,7 @@ import SwiftUI
 import PairingProtocol
 
 struct RootView: View {
-    @EnvironmentObject var hub: AppHub
+    @Environment(AppHub.self) private var hub
     @State private var presentingPairing = false
 
     var body: some View {
@@ -27,7 +27,7 @@ struct RootView: View {
         }
         .sheet(isPresented: $presentingPairing) {
             PairingFlowView()
-                .environmentObject(hub)
+                .environment(hub)
         }
     }
 }

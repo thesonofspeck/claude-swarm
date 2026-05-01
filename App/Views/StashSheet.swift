@@ -4,7 +4,7 @@ import GitKit
 
 struct StashSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject var workspace: GitWorkspace
+    let workspace: GitWorkspace
     @State private var newMessage = ""
     @State private var includeUntracked = true
 

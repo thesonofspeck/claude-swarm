@@ -4,7 +4,7 @@ import GitKit
 
 struct BranchesSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject var workspace: GitWorkspace
+    let workspace: GitWorkspace
     @State private var query: String = ""
     @State private var newBranchName: String = ""
     @State private var creatingFrom: String?

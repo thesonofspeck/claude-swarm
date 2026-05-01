@@ -1,14 +1,16 @@
 import Foundation
+import Observation
 import UserNotifications
 import UIKit
 
 /// Manages APNs registration, notification categories, and routing of
 /// notification actions back into the app.
 @MainActor
-final class PushManager: NSObject, ObservableObject {
+@Observable
+final class PushManager: NSObject {
     static let shared = PushManager()
 
-    @Published private(set) var deviceTokenHex: String?
+    private(set) var deviceTokenHex: String?
 
     enum ActionEvent {
         case approve(approvalId: String, response: PairingResponseSurrogate)
@@ -19,13 +21,25 @@ final class PushManager: NSObject, ObservableObject {
     /// PairingProtocol just to forward the enum into NotificationCenter.
     enum PairingResponseSurrogate: String { case allow, deny }
 
+    @ObservationIgnored
     let actionsContinuation: AsyncStream<ActionEvent>.Continuation
+    @ObservationIgnored
     let actions: AsyncStream<ActionEvent>
+
+    /// Stream of device-token changes so AppHub can fan-out to RelayClients
+    /// without depending on Combine's `$deviceTokenHex.values`.
+    @ObservationIgnored
+    let tokens: AsyncStream<String?>
+    @ObservationIgnored
+    private let tokensContinuation: AsyncStream<String?>.Continuation
 
     override init() {
         var c: AsyncStream<ActionEvent>.Continuation!
         actions = AsyncStream { continuation in c = continuation }
         actionsContinuation = c
+        var t: AsyncStream<String?>.Continuation!
+        tokens = AsyncStream { continuation in t = continuation }
+        tokensContinuation = t
         super.init()
     }
 
@@ -44,7 +58,9 @@ final class PushManager: NSObject, ObservableObject {
     }
 
     func setDeviceToken(_ token: Data) {
-        deviceTokenHex = token.map { String(format: "%02x", $0) }.joined()
+        let hex = token.map { String(format: "%02x", $0) }.joined()
+        deviceTokenHex = hex
+        tokensContinuation.yield(hex)
     }
 
     private func registerCategories(on center: UNUserNotificationCenter) {

@@ -2,7 +2,7 @@ import SwiftUI
 import PairingProtocol
 
 struct SessionDetailView: View {
-    @EnvironmentObject var hub: AppHub
+    @Environment(AppHub.self) private var hub
     let macId: String
     let session: SessionSummary
 

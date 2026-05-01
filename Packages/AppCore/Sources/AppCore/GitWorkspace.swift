@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import SwiftUI
 import GitKit
 import os
@@ -8,7 +9,8 @@ import os
 /// and routes every mutation through `GitOperationCenter` so the toolbar
 /// has one progress/error stream to render.
 @MainActor
-public final class GitWorkspace: ObservableObject {
+@Observable
+public final class GitWorkspace {
     public let repo: URL
     public let center: GitOperationCenter
     public let status: StatusService
@@ -26,24 +28,27 @@ public final class GitWorkspace: ObservableObject {
     /// running its own FileWatcher and re-fetching everything.
     public let pulse: WorkspacePulse
 
-    @Published public private(set) var changes: [WorkingChange] = []
-    @Published public private(set) var branchList: [BranchRef] = []
-    @Published public private(set) var stashes: [StashEntry] = []
-    @Published public private(set) var tagList: [TagRef] = []
-    @Published public private(set) var remotes: [GitRemote] = []
-    @Published public private(set) var currentBranch: String?
-    @Published public private(set) var ahead: Int = 0
-    @Published public private(set) var behind: Int = 0
-    @Published public private(set) var repoState: MergeService.RepoState = .clean
-    @Published public private(set) var lastError: String?
-    @Published public private(set) var busy: Bool = false
+    public private(set) var changes: [WorkingChange] = []
+    public private(set) var branchList: [BranchRef] = []
+    public private(set) var stashes: [StashEntry] = []
+    public private(set) var tagList: [TagRef] = []
+    public private(set) var remotes: [GitRemote] = []
+    public private(set) var currentBranch: String?
+    public private(set) var ahead: Int = 0
+    public private(set) var behind: Int = 0
+    public private(set) var repoState: MergeService.RepoState = .clean
+    public private(set) var lastError: String?
+    public private(set) var busy: Bool = false
 
     /// Single rolling marker so the toolbar can show "Pushing…", "Done",
     /// "Failed: …" without each call site wiring its own view state.
-    @Published public private(set) var statusLine: String?
+    public private(set) var statusLine: String?
 
+    @ObservationIgnored
     private var eventTask: Task<Void, Never>?
+    @ObservationIgnored
     private var pulseTask: Task<Void, Never>?
+    @ObservationIgnored
     private var fileWatcher: FileWatcher?
 
     private static let signpostLog = OSLog(subsystem: "com.claudeswarm", category: .pointsOfInterest)
@@ -103,7 +108,7 @@ public final class GitWorkspace: ObservableObject {
     }
 
     private func handleInvalidation(_ kinds: Set<WorkspaceInvalidation>) async {
-        // The workspace itself only owns the @Published slices; views that
+        // The workspace itself only owns the observed slices; views that
         // care about `.files` or `.history` subscribe directly to the pulse
         // to reload their own data. We just refresh what we hold.
         if kinds.contains(.status) { await reloadStatus() }

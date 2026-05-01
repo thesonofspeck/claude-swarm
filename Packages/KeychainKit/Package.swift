@@ -1,6 +1,8 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
+let swift6: [SwiftSetting] = [.swiftLanguageMode(.v6)]
+
 let package = Package(
     name: "KeychainKit",
     platforms: [.macOS("26.0")],
@@ -8,7 +10,7 @@ let package = Package(
         .library(name: "KeychainKit", targets: ["KeychainKit"])
     ],
     targets: [
-        .target(name: "KeychainKit"),
-        .testTarget(name: "KeychainKitTests", dependencies: ["KeychainKit"])
+        .target(name: "KeychainKit", swiftSettings: swift6),
+        .testTarget(name: "KeychainKitTests", dependencies: ["KeychainKit"], swiftSettings: swift6)
     ]
 )

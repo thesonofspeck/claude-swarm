@@ -1,6 +1,8 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
+let swift6: [SwiftSetting] = [.swiftLanguageMode(.v6)]
+
 let package = Package(
     name: "ClaudeSwarmNotifications",
     platforms: [.macOS("26.0")],
@@ -10,7 +12,8 @@ let package = Package(
     targets: [
         .target(
             name: "ClaudeSwarmNotifications",
-            path: "Sources/NotificationCenter"
+            path: "Sources/NotificationCenter",
+            swiftSettings: swift6
         )
     ]
 )

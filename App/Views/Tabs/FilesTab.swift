@@ -6,7 +6,7 @@ import GitKit
 import Splash
 
 struct FilesTab: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     let session: Session
 
     @State private var entries: [FileNode] = []

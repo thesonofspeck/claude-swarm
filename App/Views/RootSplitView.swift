@@ -3,7 +3,7 @@ import AppCore
 import PersistenceKit
 
 struct RootSplitView: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @State private var selectedSession: Session?
     @State private var inspectorVisible = true
     @State private var showOnboarding = false
@@ -58,21 +58,21 @@ struct RootSplitView: View {
             .padding(Metrics.Space.md)
         }
         .sheet(isPresented: $showOnboarding) {
-            OnboardingSheet().environmentObject(env)
+            OnboardingSheet().environment(env)
         }
         .sheet(item: Binding(
             get: { newSessionProjectId.map { NewSessionContext(projectId: $0) } },
             set: { newSessionProjectId = $0?.projectId }
         )) { ctx in
             NewSessionSheet(preselectedProjectId: ctx.projectId.isEmpty ? nil : ctx.projectId)
-                .environmentObject(env)
-                .environmentObject(env.projectList)
-                .environmentObject(env.registry)
+                .environment(env)
+                .environment(env.projectList)
+                .environment(env.registry)
         }
         .sheet(isPresented: $showCommandPalette) {
             CommandPalette(selectedSession: $selectedSession)
-                .environmentObject(env)
-                .environmentObject(env.projectList)
+                .environment(env)
+                .environment(env.projectList)
         }
         .onAppear {
             if !env.settings.hasCompletedOnboarding {

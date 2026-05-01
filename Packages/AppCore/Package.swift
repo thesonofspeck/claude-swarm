@@ -1,6 +1,8 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
+let swift6: [SwiftSetting] = [.swiftLanguageMode(.v6)]
+
 let package = Package(
     name: "AppCore",
     platforms: [.macOS("26.0")],
@@ -45,8 +47,9 @@ let package = Package(
                 "ToolDetector",
                 "BrewInstaller",
                 "LibraryKit"
-            ]
+            ],
+            swiftSettings: swift6
         ),
-        .testTarget(name: "AppCoreTests", dependencies: ["AppCore"])
+        .testTarget(name: "AppCoreTests", dependencies: ["AppCore"], swiftSettings: swift6)
     ]
 )

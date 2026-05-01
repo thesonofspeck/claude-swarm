@@ -3,7 +3,7 @@ import AppCore
 import PersistenceKit
 
 struct ActivityFeedView: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @State private var events: [ActivityEvent] = []
 
     var body: some View {

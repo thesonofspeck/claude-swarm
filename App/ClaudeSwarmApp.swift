@@ -1,10 +1,11 @@
 import SwiftUI
+import Observation
 import AppCore
 import ClaudeSwarmNotifications
 
 @main
 struct ClaudeSwarmApp: App {
-    @StateObject private var bootstrap = AppBootstrap()
+    @State private var bootstrap = AppBootstrap()
 
     var body: some Scene {
         WindowGroup {
@@ -62,14 +63,15 @@ struct ClaudeSwarmApp: App {
 }
 
 @MainActor
-final class AppBootstrap: ObservableObject {
+@Observable
+final class AppBootstrap {
     enum State {
         case loading
         case ready(AppEnvironment)
         case failed(Error)
     }
 
-    @Published var state: State = .loading
+    var state: State = .loading
 
     init() { retry() }
 
@@ -84,7 +86,7 @@ final class AppBootstrap: ObservableObject {
 }
 
 private struct BootstrapWindow: View {
-    @ObservedObject var bootstrap: AppBootstrap
+    let bootstrap: AppBootstrap
 
     var body: some View {
         switch bootstrap.state {
@@ -95,10 +97,10 @@ private struct BootstrapWindow: View {
                 .frame(minWidth: 1100, minHeight: 700)
         case .ready(let env):
             RootSplitView()
-                .environmentObject(env)
-                .environmentObject(env.notifier)
-                .environmentObject(env.projectList)
-                .environmentObject(env.registry)
+                .environment(env)
+                .environment(env.notifier)
+                .environment(env.projectList)
+                .environment(env.registry)
                 .frame(minWidth: 1100, minHeight: 700)
                 .background(Palette.bgBase)
                 .tint(Palette.blue)
@@ -111,11 +113,11 @@ private struct BootstrapWindow: View {
 }
 
 private struct BootstrapSettings: View {
-    @ObservedObject var bootstrap: AppBootstrap
+    let bootstrap: AppBootstrap
     var body: some View {
         if case .ready(let env) = bootstrap.state {
             SettingsSheet()
-                .environmentObject(env)
+                .environment(env)
                 .tint(Palette.blue)
         } else {
             Text("Claude Swarm is not running.")
@@ -126,13 +128,13 @@ private struct BootstrapSettings: View {
 }
 
 private struct BootstrapMenuBar: View {
-    @ObservedObject var bootstrap: AppBootstrap
+    let bootstrap: AppBootstrap
     var body: some View {
         if case .ready(let env) = bootstrap.state {
             MenuBarStatusView()
-                .environmentObject(env)
-                .environmentObject(env.notifier)
-                .environmentObject(env.projectList)
+                .environment(env)
+                .environment(env.notifier)
+                .environment(env.projectList)
         } else {
             Text("Claude Swarm is starting…")
                 .foregroundStyle(Palette.fgMuted)
@@ -142,7 +144,7 @@ private struct BootstrapMenuBar: View {
 }
 
 private struct MenuBarLabel: View {
-    @ObservedObject var bootstrap: AppBootstrap
+    let bootstrap: AppBootstrap
     var body: some View {
         switch bootstrap.state {
         case .ready(let env):
@@ -154,7 +156,7 @@ private struct MenuBarLabel: View {
 }
 
 private struct MenuBarLabelInner: View {
-    @ObservedObject var notifier: Notifier
+    let notifier: Notifier
     var body: some View {
         let n = notifier.pendingSessionIds.count
         if n > 0 {

@@ -6,7 +6,7 @@ import WrikeKit
 /// Lets the user create a Wrike task in a project's mapped folder, with a
 /// ✨ button that drafts title + description from a one-line hint.
 struct NewWrikeTaskSheet: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
     let project: Project
 

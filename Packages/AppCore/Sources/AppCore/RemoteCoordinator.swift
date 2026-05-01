@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import KeychainKit
 import PersistenceKit
 import PairingProtocol
@@ -17,11 +18,12 @@ import ClaudeSwarmNotifications
 /// them out to live WebSocket clients and to APNs, and dispatches
 /// inbound commands back into the app (approvals, session input).
 @MainActor
-public final class RemoteCoordinator: ObservableObject {
-    @Published public private(set) var pairedDevices: [PairRecord] = []
-    @Published public private(set) var liveDeviceIds: Set<String> = []
-    @Published public var pushConfig: PushBackendConfig
-    @Published public private(set) var sleepGuardHeld: Bool = false
+@Observable
+public final class RemoteCoordinator {
+    public private(set) var pairedDevices: [PairRecord] = []
+    public private(set) var liveDeviceIds: Set<String> = []
+    public var pushConfig: PushBackendConfig
+    public private(set) var sleepGuardHeld: Bool = false
 
     nonisolated(unsafe) private static let decoder = JSONDecoder()
     nonisolated(unsafe) private static let encoder = JSONEncoder()
@@ -47,18 +49,23 @@ public final class RemoteCoordinator: ObservableObject {
 
     /// Caller (AppEnvironment) wires these to forward commands into
     /// SessionManager / hook responder.
+    @ObservationIgnored
     public var onSendInput: ((_ sessionId: String, _ text: String) async -> Void)?
+    @ObservationIgnored
     public var onApproval: ((_ approvalId: String, _ response: ApprovalResponse) async -> Void)?
 
     private let macId: String
     private let macName: String
     private let configURL: URL
+    @ObservationIgnored
     private var sender: PushSender?
+    @ObservationIgnored
     private var queuedPushes: [(payload: [String: Any], collapseId: String)] = []
 
     /// When non-nil, returns true to defer pushes until the window ends.
     /// Wired to AppEnvironment so RemoteCoordinator stays decoupled from
     /// AppSettings while still respecting the quiet-hours toggle.
+    @ObservationIgnored
     public var quietHoursPredicate: (() -> Bool)?
 
     public init(

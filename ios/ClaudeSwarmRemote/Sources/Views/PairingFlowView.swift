@@ -3,15 +3,11 @@ import AVFoundation
 import PairingProtocol
 
 struct PairingFlowView: View {
-    @EnvironmentObject var hub: AppHub
-    @EnvironmentObject var push: PushManager
+    @Environment(AppHub.self) private var hub
+    @Environment(PushManager.self) private var push
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var vm: PairingViewModel
+    @State private var vm = PairingViewModel(store: PairedMacStore())
     @State private var showingScanner = true
-
-    init() {
-        _vm = StateObject(wrappedValue: PairingViewModel(store: PairedMacStore()))
-    }
 
     var body: some View {
         NavigationStack {

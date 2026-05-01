@@ -1,6 +1,8 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
+let swift6: [SwiftSetting] = [.swiftLanguageMode(.v6)]
+
 let package = Package(
     name: "PairingService",
     platforms: [.macOS("26.0")],
@@ -12,7 +14,7 @@ let package = Package(
         .package(path: "../KeychainKit")
     ],
     targets: [
-        .target(name: "PairingService", dependencies: ["PairingProtocol", "KeychainKit"]),
-        .testTarget(name: "PairingServiceTests", dependencies: ["PairingService"])
+        .target(name: "PairingService", dependencies: ["PairingProtocol", "KeychainKit"], swiftSettings: swift6),
+        .testTarget(name: "PairingServiceTests", dependencies: ["PairingService"], swiftSettings: swift6)
     ]
 )

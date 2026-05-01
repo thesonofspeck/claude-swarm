@@ -48,8 +48,8 @@ enum DetailTab: String, CaseIterable, Identifiable {
 }
 
 struct DetailView: View {
-    @EnvironmentObject var env: AppEnvironment
-    @EnvironmentObject var registry: RunningSessionRegistry
+    @Environment(AppEnvironment.self) private var env
+    @Environment(RunningSessionRegistry.self) private var registry
     let session: Session?
     @State private var tab: DetailTab = .terminal
     @State private var project: Project?
@@ -126,8 +126,8 @@ struct DetailView: View {
 }
 
 struct TerminalTab: View {
-    @EnvironmentObject var env: AppEnvironment
-    @EnvironmentObject var registry: RunningSessionRegistry
+    @Environment(AppEnvironment.self) private var env
+    @Environment(RunningSessionRegistry.self) private var registry
     let session: Session
 
     var body: some View {
@@ -154,7 +154,7 @@ struct TerminalTab: View {
 }
 
 struct DiffTab: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     let session: Session
     @State private var files: [DiffFile] = []
     @State private var loading = true
@@ -192,7 +192,7 @@ struct DiffTab: View {
 }
 
 struct HistoryTab: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     let session: Session
     @State private var commits: [CommitSummary] = []
     @State private var selection: String?

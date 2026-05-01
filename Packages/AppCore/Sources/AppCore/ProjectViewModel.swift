@@ -1,17 +1,19 @@
 import Foundation
-import Combine
+import Observation
 import PersistenceKit
 import SessionCore
 
 @MainActor
-public final class ProjectListViewModel: ObservableObject {
-    @Published public private(set) var projects: [Project] = []
-    @Published public private(set) var sessionsByProject: [String: [Session]] = [:]
-    @Published public var error: String?
+@Observable
+public final class ProjectListViewModel {
+    public private(set) var projects: [Project] = []
+    public private(set) var sessionsByProject: [String: [Session]] = [:]
+    public var error: String?
 
     private let projectsRepo: ProjectRepository
     private let sessionsRepo: SessionRepository
     private let manager: SessionManager
+    @ObservationIgnored
     private var refreshTask: Task<Void, Never>?
 
     public init(

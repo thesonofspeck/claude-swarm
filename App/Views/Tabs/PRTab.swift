@@ -5,7 +5,7 @@ import GitHubKit
 import GitKit
 
 struct PRTab: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     let session: Session
     let project: Project?
 

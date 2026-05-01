@@ -6,7 +6,7 @@ import GitKit
 /// branch, ahead/behind counters, fetch/pull/push buttons, and a status
 /// line that mirrors `GitOperationCenter` events.
 struct SyncToolbar: View {
-    @ObservedObject var workspace: GitWorkspace
+    let workspace: GitWorkspace
     let onBranches: () -> Void
     let onStash: () -> Void
     let onTags: () -> Void

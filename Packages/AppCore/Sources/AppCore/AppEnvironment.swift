@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import CryptoKit
 import KeychainKit
 import PersistenceKit
@@ -13,7 +14,8 @@ import AgentBootstrap
 import PairingProtocol
 
 @MainActor
-public final class AppEnvironment: ObservableObject {
+@Observable
+public final class AppEnvironment {
     public let keychain: Keychain
     public let database: Database
     public let projects: ProjectRepository
@@ -36,14 +38,17 @@ public final class AppEnvironment: ObservableObject {
     /// will only allow once every other `let` property is initialized.
     public private(set) var llm: LLMHelper!
 
-    @Published public var settings: AppSettings
-    @Published public var lastError: String?
+    public var settings: AppSettings
+    public var lastError: String?
 
     /// Same rationale as `llm` — the hook handler captures `self`, so
     /// the property is implicitly nil during stored-property setup and
     /// gets its real value once everything else exists.
+    @ObservationIgnored
     private var hookServer: HookSocketServer!
+    @ObservationIgnored
     private let settingsURL: URL
+    @ObservationIgnored
     private var backgroundTasks: [Task<Void, Never>] = []
 
     public init() throws {
@@ -256,6 +261,7 @@ public final class AppEnvironment: ObservableObject {
         )
     }
 
+    @ObservationIgnored
     private var gitWorkspaces: [String: GitWorkspace] = [:]
 
     /// Returns a cached `GitWorkspace` for the given worktree path. The

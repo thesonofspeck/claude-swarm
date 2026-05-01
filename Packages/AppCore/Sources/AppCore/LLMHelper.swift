@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import AgentBootstrap
 import PersistenceKit
 
@@ -8,7 +9,8 @@ import PersistenceKit
 /// with) and lets the project's bundled skills define how Wrike tasks
 /// and PR descriptions should look.
 @MainActor
-public final class LLMHelper: ObservableObject {
+@Observable
+public final class LLMHelper {
     public struct Config: Codable, Equatable, Sendable {
         public var enabled: Bool
         public var maxTimeoutSeconds: Int
@@ -19,7 +21,7 @@ public final class LLMHelper: ObservableObject {
         }
     }
 
-    @Published public var config: Config
+    public var config: Config
 
     nonisolated(unsafe) private static let decoder = JSONDecoder()
     nonisolated(unsafe) private static let encoder = JSONEncoder()

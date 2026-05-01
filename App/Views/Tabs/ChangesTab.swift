@@ -10,10 +10,10 @@ import PersistenceKit
 /// lease, in-progress merge banner) you actually want when working on
 /// production code.
 struct ChangesTab: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     let session: Session
 
-    @StateObject private var workspace: WorkspaceHolder = .init()
+    @State private var workspace = WorkspaceHolder()
     @State private var selection: String?
     @State private var fileDiff: [DiffFile] = []
     @State private var commitMessage: String = ""
@@ -124,14 +124,15 @@ struct ChangesTab: View {
 }
 
 @MainActor
-private final class WorkspaceHolder: ObservableObject {
-    @Published var value: GitWorkspace?
+@Observable
+private final class WorkspaceHolder {
+    var value: GitWorkspace?
 }
 
 // MARK: - File list
 
 private struct ChangesFileList: View {
-    @ObservedObject var workspace: GitWorkspace
+    let workspace: GitWorkspace
     @Binding var selection: String?
     let onSelect: (String?) -> Void
 
@@ -412,7 +413,7 @@ private struct CommitComposer: View {
 // MARK: - Repo-state banner
 
 private struct RepoStateBanner: View {
-    @ObservedObject var workspace: GitWorkspace
+    let workspace: GitWorkspace
 
     var body: some View {
         HStack(spacing: Metrics.Space.sm) {

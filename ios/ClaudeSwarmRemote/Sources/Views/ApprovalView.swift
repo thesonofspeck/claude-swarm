@@ -2,7 +2,7 @@ import SwiftUI
 import PairingProtocol
 
 struct ApprovalView: View {
-    @EnvironmentObject var hub: AppHub
+    @Environment(AppHub.self) private var hub
     @Environment(\.dismiss) private var dismiss
     let macId: String
     let request: ApprovalRequest

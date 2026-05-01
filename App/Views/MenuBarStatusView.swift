@@ -4,9 +4,9 @@ import PersistenceKit
 import ClaudeSwarmNotifications
 
 struct MenuBarStatusView: View {
-    @EnvironmentObject var env: AppEnvironment
-    @EnvironmentObject var notifier: Notifier
-    @EnvironmentObject var projectList: ProjectListViewModel
+    @Environment(AppEnvironment.self) private var env
+    @Environment(Notifier.self) private var notifier
+    @Environment(ProjectListViewModel.self) private var projectList
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

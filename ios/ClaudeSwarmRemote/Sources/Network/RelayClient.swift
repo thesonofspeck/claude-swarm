@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import Combine
 import CryptoKit
 import PairingProtocol
@@ -11,7 +12,8 @@ import PairingProtocol
 /// on the SHA-256 thumbprint of the server cert (passed via the QR
 /// invite and stored alongside the bearer token).
 @MainActor
-final class RelayClient: ObservableObject {
+@Observable
+final class RelayClient {
     enum ConnectionState: Equatable {
         case disconnected
         case connecting
@@ -20,19 +22,26 @@ final class RelayClient: ObservableObject {
         case failed(String)
     }
 
-    @Published private(set) var state: ConnectionState = .disconnected
-    @Published private(set) var serverTime: Date?
-    @Published private(set) var sessions: [SessionSummary] = []
-    @Published private(set) var pendingApprovals: [ApprovalRequest] = []
+    private(set) var state: ConnectionState = .disconnected
+    private(set) var serverTime: Date?
+    private(set) var sessions: [SessionSummary] = []
+    private(set) var pendingApprovals: [ApprovalRequest] = []
 
     let mac: PairedMac
+    @ObservationIgnored
     private let deviceId: String
+    @ObservationIgnored
     private var apnsToken: String?
+    @ObservationIgnored
     private var task: URLSessionWebSocketTask?
+    @ObservationIgnored
     private var session: URLSession
+    @ObservationIgnored
     private var reconnectAttempts = 0
+    @ObservationIgnored
     private var reconnectTask: Task<Void, Never>?
 
+    @ObservationIgnored
     let events = PassthroughSubject<ServerEvent, Never>()
 
     init(mac: PairedMac, deviceId: String) {

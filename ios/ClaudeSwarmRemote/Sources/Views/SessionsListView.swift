@@ -2,7 +2,7 @@ import SwiftUI
 import PairingProtocol
 
 struct SessionsListView: View {
-    @EnvironmentObject var hub: AppHub
+    @Environment(AppHub.self) private var hub
 
     var body: some View {
         List {

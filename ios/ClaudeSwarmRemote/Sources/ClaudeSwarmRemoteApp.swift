@@ -1,17 +1,18 @@
 import SwiftUI
+import Observation
 import UIKit
 import PairingProtocol
 
 @main
 struct ClaudeSwarmRemoteApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
-    @StateObject private var hub = AppHub()
+    @State private var hub = AppHub()
 
     var body: some Scene {
         WindowGroup {
             RootView()
-                .environmentObject(hub)
-                .environmentObject(PushManager.shared)
+                .environment(hub)
+                .environment(PushManager.shared)
                 .background(Palette.bgBase.ignoresSafeArea())
                 .tint(Palette.blue)
                 .task { await hub.bootstrap() }
@@ -35,9 +36,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 }
 
 @MainActor
-final class AppHub: ObservableObject {
-    @Published var pairedMacs: [PairedMac] = []
-    @Published var clients: [String: RelayClient] = [:]   // keyed by macId
+@Observable
+final class AppHub {
+    var pairedMacs: [PairedMac] = []
+    var clients: [String: RelayClient] = [:]   // keyed by macId
 
     let store = PairedMacStore()
 
@@ -88,10 +90,9 @@ final class AppHub: ObservableObject {
     }
 
     private func observeApnsToken() async {
-        // PushManager publishes its token via @Published; mirror it into
-        // every RelayClient so the next Hello carries it to the Mac.
-        let push = PushManager.shared
-        for await token in push.$deviceTokenHex.values {
+        // Mirror token changes into every RelayClient so the next Hello
+        // carries it to the Mac.
+        for await token in PushManager.shared.tokens {
             for client in clients.values {
                 client.updateApnsToken(token)
             }

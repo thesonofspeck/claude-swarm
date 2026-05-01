@@ -6,7 +6,7 @@ import ToolDetector
 import PersistenceKit
 
 struct DiagnosticsView: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @State private var checks: [Check] = []
     @State private var running = false
 

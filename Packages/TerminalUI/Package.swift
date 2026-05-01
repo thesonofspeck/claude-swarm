@@ -1,6 +1,8 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
+let swift6: [SwiftSetting] = [.swiftLanguageMode(.v6)]
+
 let package = Package(
     name: "TerminalUI",
     platforms: [.macOS("26.0")],
@@ -13,6 +15,6 @@ let package = Package(
         .package(path: "../AtomPalette")
     ],
     targets: [
-        .target(name: "TerminalUI", dependencies: ["SwiftTerm", "SessionCore", "AtomPalette"])
+        .target(name: "TerminalUI", dependencies: ["SwiftTerm", "SessionCore", "AtomPalette"], swiftSettings: swift6)
     ]
 )
