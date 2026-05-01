@@ -1,12 +1,12 @@
 import Foundation
 
-public struct Worktree: Equatable {
+public struct Worktree: Equatable, Sendable {
     public let path: URL
     public let branch: String
     public let head: String
 }
 
-public struct WorktreeService {
+public struct WorktreeService: Sendable {
     public let runner: GitRunner
 
     public init(runner: GitRunner = GitRunner()) {
