@@ -1,6 +1,6 @@
 import Foundation
 
-public struct GitResult: Equatable {
+public struct GitResult: Equatable, Sendable {
     public let stdout: String
     public let stderr: String
     public let exitCode: Int32
