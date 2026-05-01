@@ -1,5 +1,5 @@
 import SwiftUI
-import SwiftTerm
+@preconcurrency import SwiftTerm
 import SessionCore
 
 /// SwiftUI wrapper around SwiftTerm's `LocalProcessTerminalView`. Owns the
@@ -56,6 +56,7 @@ public struct PTYTerminalView: NSViewRepresentable {
         Coordinator(onExit: onExit)
     }
 
+    @MainActor
     public final class Coordinator: NSObject, LocalProcessTerminalViewDelegate {
         let onExit: (Int32) -> Void
         var recorder: TranscriptRecorder?

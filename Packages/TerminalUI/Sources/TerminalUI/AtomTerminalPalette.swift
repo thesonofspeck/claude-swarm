@@ -1,6 +1,6 @@
 import Foundation
 import AppKit
-import SwiftTerm
+@preconcurrency import SwiftTerm
 import AtomPalette
 
 /// Atom One Light + Dark 16-color ANSI palettes for the embedded terminal.
@@ -32,7 +32,9 @@ public enum AtomTerminalPalette {
 
     /// Standard ANSI 16: 0..7 are normal, 8..15 are bright. Maps roughly
     /// to the Atom palette: black/red/green/yellow/blue/magenta/cyan/white.
-    private static let darkColors: [SwiftTerm.Color] = [
+    /// `nonisolated(unsafe)` because SwiftTerm.Color isn't Sendable but
+    /// these tables are immutable and only read.
+    nonisolated(unsafe) private static let darkColors: [SwiftTerm.Color] = [
         st(AtomHex.bgBase.dark),
         st(AtomHex.red.dark),
         st(AtomHex.green.dark),
@@ -51,7 +53,7 @@ public enum AtomTerminalPalette {
         st(0xFFFFFF)
     ]
 
-    private static let lightColors: [SwiftTerm.Color] = [
+    nonisolated(unsafe) private static let lightColors: [SwiftTerm.Color] = [
         st(AtomHex.fg.light),
         st(AtomHex.red.light),
         st(AtomHex.green.light),
