@@ -1,6 +1,6 @@
 import Foundation
 
-public struct GhResult: Equatable {
+public struct GhResult: Equatable, Sendable {
     public let stdout: String
     public let stderr: String
     public let exitCode: Int32
