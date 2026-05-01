@@ -52,7 +52,8 @@ public actor WrikeClient {
     }
 
     public func task(id: String) async throws -> WrikeTask? {
-        try await getList(path: "tasks/\(id)", query: ["fields": "[description]"]).first
+        let result: [WrikeTask] = try await getList(path: "tasks/\(id)", query: ["fields": "[description]"])
+        return result.first
     }
 
     public func folders() async throws -> [WrikeFolder] {
@@ -67,17 +68,20 @@ public actor WrikeClient {
     /// raw custom-status id (workspace-specific); use `WrikeStatusMapper`
     /// to resolve a semantic transition like `.inProgress` to one.
     public func updateTaskStatus(taskId: String, customStatusId: String) async throws -> WrikeTask? {
-        try await put(path: "tasks/\(taskId)", form: ["customStatus": customStatusId]).first
+        let result: [WrikeTask] = try await put(path: "tasks/\(taskId)", form: ["customStatus": customStatusId])
+        return result.first
     }
 
     // MARK: - Tasks (full CRUD)
 
     public func createTask(in folderId: String, mutation: WrikeTaskMutation) async throws -> WrikeTask? {
-        try await sendJSON(method: "POST", path: "folders/\(folderId)/tasks", body: mutation).first
+        let result: [WrikeTask] = try await sendJSON(method: "POST", path: "folders/\(folderId)/tasks", body: mutation)
+        return result.first
     }
 
     public func updateTask(id: String, mutation: WrikeTaskMutation) async throws -> WrikeTask? {
-        try await sendJSON(method: "PUT", path: "tasks/\(id)", body: mutation).first
+        let result: [WrikeTask] = try await sendJSON(method: "PUT", path: "tasks/\(id)", body: mutation)
+        return result.first
     }
 
     public func deleteTask(id: String) async throws {
@@ -94,7 +98,8 @@ public actor WrikeClient {
     public func createComment(taskId: String, text: String, plainText: Bool = false) async throws -> WrikeComment? {
         var form: [String: String] = ["text": text]
         if plainText { form["plainText"] = "true" }
-        return try await send(method: "POST", path: "tasks/\(taskId)/comments", form: form).first
+        let result: [WrikeComment] = try await send(method: "POST", path: "tasks/\(taskId)/comments", form: form)
+        return result.first
     }
 
     public func deleteComment(id: String) async throws {
@@ -111,13 +116,15 @@ public actor WrikeClient {
     public func attachURL(taskId: String, url: String, name: String?) async throws -> WrikeAttachment? {
         var form: [String: String] = ["url": url]
         if let name { form["name"] = name }
-        return try await send(method: "POST", path: "tasks/\(taskId)/attachments", form: form).first
+        let result: [WrikeAttachment] = try await send(method: "POST", path: "tasks/\(taskId)/attachments", form: form)
+        return result.first
     }
 
     // MARK: - Users
 
     public func currentUser() async throws -> WrikeUser? {
-        try await getList(path: "contacts", query: ["me": "true"]).first
+        let result: [WrikeUser] = try await getList(path: "contacts", query: ["me": "true"])
+        return result.first
     }
 
     public func users() async throws -> [WrikeUser] {
