@@ -1,6 +1,6 @@
 import Foundation
 
-public enum DiffLineKind: Equatable {
+public enum DiffLineKind: Equatable, Sendable {
     case context
     case addition
     case deletion
@@ -8,14 +8,14 @@ public enum DiffLineKind: Equatable {
     case fileHeader
 }
 
-public struct DiffLine: Equatable {
+public struct DiffLine: Equatable, Sendable {
     public let kind: DiffLineKind
     public let oldNumber: Int?
     public let newNumber: Int?
     public let text: String
 }
 
-public struct DiffHunk: Equatable {
+public struct DiffHunk: Equatable, Sendable {
     public let header: String
     public let oldStart: Int
     public let oldCount: Int
@@ -24,7 +24,7 @@ public struct DiffHunk: Equatable {
     public let lines: [DiffLine]
 }
 
-public struct DiffFile: Equatable {
+public struct DiffFile: Equatable, Sendable {
     public let oldPath: String?
     public let newPath: String?
     public let isBinary: Bool

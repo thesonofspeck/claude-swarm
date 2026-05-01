@@ -183,7 +183,7 @@ struct FileNode: Identifiable, Hashable {
         let fm = FileManager.default
         guard depth > 0 else { return [] }
         let urls = try fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])
-        return try urls
+        return urls
             .filter { !ignored.contains($0.lastPathComponent) }
             .sorted { (a, b) -> Bool in
                 let aDir = (try? a.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
