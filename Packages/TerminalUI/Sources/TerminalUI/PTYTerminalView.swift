@@ -98,8 +98,10 @@ public struct PTYTerminalView: NSViewRepresentable {
 
         public func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
         public func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
-        public func hostCurrentDirectoryUpdate(source: LocalProcessTerminalView, directory: String?) {}
-        public func processTerminated(source: LocalProcessTerminalView, exitCode: Int32?) {
+        // The trailing two delegate methods take the base TerminalView,
+        // not LocalProcessTerminalView — protocol signature in SwiftTerm.
+        public func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
+        public func processTerminated(source: TerminalView, exitCode: Int32?) {
             recorder?.close()
             onExit(exitCode ?? -1)
         }
