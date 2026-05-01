@@ -16,14 +16,144 @@ struct TasksTab: View {
     @State private var initialPrompt: String = ""
     @State private var starting = false
     @State private var showNewTask = false
+    @State private var filter = WrikeFilter()
+
+    private var filteredTasks: [WrikeTask] { filter.apply(to: tasks) }
+    private var availableStatuses: [String] {
+        Array(Set(tasks.map(\.status))).sorted()
+    }
+    private var availableImportances: [String] {
+        Array(Set(tasks.compactMap(\.importance))).sorted { lhs, rhs in
+            // Order High → Normal → Low so the picker matches user mental model.
+            order(lhs) < order(rhs)
+        }
+    }
+    private func order(_ importance: String) -> Int {
+        switch importance {
+        case "High": return 0
+        case "Normal": return 1
+        case "Low": return 2
+        default: return 3
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
+            if !tasks.isEmpty || !filter.isEmpty {
+                searchBar
+                Divider().background(Palette.divider)
+            }
             content
         }
         .task(id: project?.id) { await load() }
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: Metrics.Space.sm) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(Palette.fgMuted)
+                TextField("Search title, description, or ID", text: $filter.query)
+                    .textFieldStyle(.plain)
+                if !filter.query.isEmpty {
+                    Button {
+                        filter.query = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(Palette.fgMuted)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, Metrics.Space.sm)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: Metrics.Radius.md)
+                    .fill(Palette.bgRaised)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Metrics.Radius.md)
+                    .stroke(Palette.divider, lineWidth: Metrics.Stroke.hairline)
+            )
+
+            statusFilterMenu
+            importanceFilterMenu
+
+            Toggle("Hide done", isOn: $filter.hideCompleted)
+                .toggleStyle(.checkbox)
+                .controlSize(.small)
+
+            if !filter.isEmpty {
+                Button("Clear") { filter = WrikeFilter() }
+                    .buttonStyle(.plain)
+                    .font(Type.label)
+                    .foregroundStyle(Palette.fgMuted)
+            }
+
+            Spacer()
+
+            Text("\(filteredTasks.count) of \(tasks.count)")
+                .font(Type.caption)
+                .foregroundStyle(Palette.fgMuted)
+        }
+        .padding(Metrics.Space.md)
+        .background(Palette.bgSidebar)
+    }
+
+    private var statusFilterMenu: some View {
+        Menu {
+            if availableStatuses.isEmpty {
+                Text("No statuses").foregroundStyle(Palette.fgMuted)
+            } else {
+                Button("All statuses") { filter.statuses = [] }
+                Divider()
+                ForEach(availableStatuses, id: \.self) { status in
+                    Toggle(status, isOn: Binding(
+                        get: { filter.statuses.contains(status) },
+                        set: { on in
+                            if on { filter.statuses.insert(status) }
+                            else { filter.statuses.remove(status) }
+                        }
+                    ))
+                }
+            }
+        } label: {
+            Label(
+                filter.statuses.isEmpty ? "Status" : "Status · \(filter.statuses.count)",
+                systemImage: "circle.dashed.inset.filled"
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .frame(maxWidth: 140)
+    }
+
+    private var importanceFilterMenu: some View {
+        Menu {
+            if availableImportances.isEmpty {
+                Text("No importance").foregroundStyle(Palette.fgMuted)
+            } else {
+                Button("All priorities") { filter.importances = [] }
+                Divider()
+                ForEach(availableImportances, id: \.self) { imp in
+                    Toggle(imp, isOn: Binding(
+                        get: { filter.importances.contains(imp) },
+                        set: { on in
+                            if on { filter.importances.insert(imp) }
+                            else { filter.importances.remove(imp) }
+                        }
+                    ))
+                }
+            }
+        } label: {
+            Label(
+                filter.importances.isEmpty ? "Priority" : "Priority · \(filter.importances.count)",
+                systemImage: "exclamationmark.circle"
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .frame(maxWidth: 140)
     }
 
     private var header: some View {
@@ -82,8 +212,15 @@ struct TasksTab: View {
                 description: "This Wrike folder has no tasks visible to you.",
                 tint: Palette.fgMuted
             )
+        } else if filteredTasks.isEmpty {
+            EmptyState(
+                title: "No matches",
+                systemImage: "line.3.horizontal.decrease.circle",
+                description: "Adjust the search or clear filters to see more tasks.",
+                tint: Palette.fgMuted
+            )
         } else {
-            List(tasks) { task in
+            List(filteredTasks) { task in
                 TaskRow(task: task) {
                     pendingTask = task
                     initialPrompt = task.descriptionPlainText

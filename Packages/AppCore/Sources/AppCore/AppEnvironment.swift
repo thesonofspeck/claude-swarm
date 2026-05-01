@@ -149,6 +149,19 @@ public final class AppEnvironment: ObservableObject {
             await indexer.reindexAll()
         }
 
+        // Launch-time prewarms — paths, token unlock, and the most recent
+        // session's git workspace. All best-effort; nothing fails the app.
+        let kcRef = self.keychain
+        let snapshotSettings = self.settings
+        Task.detached { [weak self] in
+            _ = await LaunchPrewarmer.warmTools(settings: snapshotSettings)
+            await MainActor.run { LaunchPrewarmer.warmKeychain(kcRef) }
+            if let mru = snapshotSettings.lastSelectedSessionId,
+               let envRef = await MainActor.run(body: { self }) {
+                await LaunchPrewarmer.warmMostRecentWorkspace(sessionId: mru, in: envRef)
+            }
+        }
+
         let activityRef = self.activity
         let server = HookSocketServer(socketURL: AppDirectories.hooksSocket) { [weak self, weak notifier, weak remoteRef] event in
             Task { @MainActor [weak self] in
@@ -304,6 +317,7 @@ public struct AppSettings: Codable, Equatable {
     public var quietHoursStartMinute: Int   // minutes since 00:00 local time
     public var quietHoursEndMinute: Int
     public var teamLibrary: TeamLibraryConfig
+    public var lastSelectedSessionId: String?
 
     public init(
         claudeExecutable: String = "/usr/local/bin/claude",
@@ -316,7 +330,8 @@ public struct AppSettings: Codable, Equatable {
         quietHoursEnabled: Bool = false,
         quietHoursStartMinute: Int = 19 * 60,
         quietHoursEndMinute: Int = 8 * 60,
-        teamLibrary: TeamLibraryConfig = .disabled
+        teamLibrary: TeamLibraryConfig = .disabled,
+        lastSelectedSessionId: String? = nil
     ) {
         self.claudeExecutable = claudeExecutable
         self.ghExecutable = ghExecutable
@@ -329,6 +344,7 @@ public struct AppSettings: Codable, Equatable {
         self.quietHoursStartMinute = quietHoursStartMinute
         self.quietHoursEndMinute = quietHoursEndMinute
         self.teamLibrary = teamLibrary
+        self.lastSelectedSessionId = lastSelectedSessionId
     }
 
     public func isInQuietHours(now: Date = Date(), calendar: Calendar = .current) -> Bool {
@@ -355,6 +371,7 @@ public struct AppSettings: Codable, Equatable {
         quietHoursStartMinute = (try? c.decode(Int.self, forKey: .quietHoursStartMinute)) ?? 19 * 60
         quietHoursEndMinute = (try? c.decode(Int.self, forKey: .quietHoursEndMinute)) ?? 8 * 60
         teamLibrary = (try? c.decode(TeamLibraryConfig.self, forKey: .teamLibrary)) ?? .disabled
+        lastSelectedSessionId = try? c.decodeIfPresent(String.self, forKey: .lastSelectedSessionId)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -362,6 +379,7 @@ public struct AppSettings: Codable, Equatable {
         case defaultBaseBranch, notificationSoundEnabled, hasCompletedOnboarding
         case quietHoursEnabled, quietHoursStartMinute, quietHoursEndMinute
         case teamLibrary
+        case lastSelectedSessionId
     }
 
     static func load(from url: URL) -> AppSettings? {

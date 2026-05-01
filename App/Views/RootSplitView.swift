@@ -9,6 +9,7 @@ struct RootSplitView: View {
     @State private var showOnboarding = false
     @State private var showCommandPalette = false
     @State private var newSessionProjectId: String?
+    @State private var didRestoreSelection = false
 
     var body: some View {
         NavigationSplitView {
@@ -76,6 +77,23 @@ struct RootSplitView: View {
         .onAppear {
             if !env.settings.hasCompletedOnboarding {
                 showOnboarding = true
+            }
+            if !didRestoreSelection {
+                didRestoreSelection = true
+                if let id = env.settings.lastSelectedSessionId,
+                   let session = try? env.sessionsRepo.find(id: id) {
+                    selectedSession = session
+                }
+            }
+        }
+        .onChange(of: selectedSession?.id) { _, newId in
+            // Persist for the next launch and speculatively warm the
+            // workspace so opening any tab in this session is instant.
+            env.settings.lastSelectedSessionId = newId
+            env.saveSettings()
+            if let session = selectedSession {
+                let ws = env.gitWorkspace(for: session.worktreePath)
+                Task { await ws.reloadAll() }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .swarmNewSession)) { _ in
