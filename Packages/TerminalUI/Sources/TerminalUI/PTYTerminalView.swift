@@ -69,7 +69,11 @@ public struct PTYTerminalView: NSViewRepresentable {
             super.init()
         }
 
-        deinit {
+        // Swift 6 isolated deinit: lets us touch the MainActor-isolated
+        // `observer` property without crossing into a nonisolated deinit
+        // (which is otherwise the default and would refuse to read a
+        // non-Sendable NSObjectProtocol).
+        isolated deinit {
             if let observer { NotificationCenter.default.removeObserver(observer) }
         }
 
@@ -82,17 +86,21 @@ public struct PTYTerminalView: NSViewRepresentable {
                     object: nil,
                     queue: .main
                 ) { [weak self] note in
-                    self?.handleRemoteInput(note)
+                    // Pull only Sendable scalars out of the Notification
+                    // before crossing into MainActor — the Notification
+                    // value itself isn't Sendable.
+                    guard let info = note.userInfo,
+                          let id = info["sessionId"] as? String,
+                          let text = info["text"] as? String else { return }
+                    Task { @MainActor in
+                        self?.handleRemoteInput(sessionId: id, text: text)
+                    }
                 }
             }
         }
 
-        private func handleRemoteInput(_ note: Notification) {
-            guard let info = note.userInfo,
-                  let id = info["sessionId"] as? String,
-                  id == sessionId,
-                  let text = info["text"] as? String,
-                  let view else { return }
+        private func handleRemoteInput(sessionId id: String, text: String) {
+            guard id == sessionId, let view else { return }
             view.send(txt: text + "\n")
         }
 
