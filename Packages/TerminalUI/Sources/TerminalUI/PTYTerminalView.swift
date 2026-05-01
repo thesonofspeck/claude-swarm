@@ -57,7 +57,7 @@ public struct PTYTerminalView: NSViewRepresentable {
     }
 
     @MainActor
-    public final class Coordinator: NSObject, LocalProcessTerminalViewDelegate {
+    public final class Coordinator: NSObject, @preconcurrency LocalProcessTerminalViewDelegate {
         let onExit: (Int32) -> Void
         var recorder: TranscriptRecorder?
         weak var view: LocalProcessTerminalView?
