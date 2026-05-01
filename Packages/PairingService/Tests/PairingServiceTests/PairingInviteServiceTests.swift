@@ -14,8 +14,11 @@ final class PairingInviteServiceTests: XCTestCase {
     func testCodeIsSingleUse() async {
         let svc = PairingInviteService(macId: "MAC", macName: "ada-mbp")
         let invite = await svc.issue(host: "h", port: 1, certThumbprint: "x")
-        XCTAssertNotNil(await svc.consume(code: invite.pairingCode))
-        XCTAssertNil(await svc.consume(code: invite.pairingCode))
+        // XCTAssert*Nil takes a non-async autoclosure, so await outside it.
+        let first = await svc.consume(code: invite.pairingCode)
+        XCTAssertNotNil(first)
+        let second = await svc.consume(code: invite.pairingCode)
+        XCTAssertNil(second)
     }
 
     func testCodeShape() {
