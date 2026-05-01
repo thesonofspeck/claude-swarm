@@ -176,7 +176,7 @@ struct SettingsSheet: View {
                 }
                 Toggle("Allow sleep on battery", isOn: $honourBattery)
                     .onChange(of: honourBattery) { _, value in
-                        Task { await env.remote.sleepGuard.setHonourBattery(value) }
+                        env.remote.sleepGuard.setHonourBattery(value)
                     }
             }
             Section("Quiet hours") {

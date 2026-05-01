@@ -7,7 +7,15 @@ import IOKit.ps
 /// `engaged` AND the policy says it should be on. Policy: assertion is held
 /// when ≥1 paired device is active AND the Mac is on AC power (don't drain
 /// laptop batteries). Caller toggles `engaged`; SleepGuard handles release.
-public actor SleepGuard {
+///
+/// Implemented as a `@MainActor` class rather than an `actor` so the IOKit
+/// power-source notification (which we register in init via a C callback
+/// that takes an opaque self pointer) doesn't trip Swift 6's "self
+/// escapes before all stored properties are initialized" rule for actors.
+/// The callback runs on the main run loop anyway, so MainActor isolation
+/// is the right model.
+@MainActor
+public final class SleepGuard {
     public struct State: Equatable, Sendable {
         public var engaged: Bool        // are any iOS devices paired/online?
         public var onACPower: Bool
@@ -29,21 +37,19 @@ public actor SleepGuard {
             heldAssertion: false
         )
         self.reason = reason
-        // Register the IOKit power-source watcher inline rather than via
-        // an actor-isolated helper — the actor's init runs in a sync,
-        // non-isolated context and Swift 6 forbids calling isolated
-        // members from there. The callback hops back via Task { ... }.
+        self.powerSource = nil
+
+        // Register an IOKit power-source watcher. The callback hops back
+        // via Task { @MainActor in … } so we don't violate isolation.
         let context = Unmanaged.passUnretained(self).toOpaque()
         let callback: IOPowerSourceCallbackType = { ctx in
             guard let ctx else { return }
             let me = Unmanaged<SleepGuard>.fromOpaque(ctx).takeUnretainedValue()
-            Task { await me.refreshACPower() }
+            Task { @MainActor in me.refreshACPower() }
         }
         if let runLoopSource = IOPSNotificationCreateRunLoopSource(callback, context)?.takeRetainedValue() {
             CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .defaultMode)
             self.powerSource = runLoopSource
-        } else {
-            self.powerSource = nil
         }
     }
 

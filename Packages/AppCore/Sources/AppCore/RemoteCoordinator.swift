@@ -126,7 +126,7 @@ public final class RemoteCoordinator: ObservableObject {
             self.pairedDevices = all
             self.liveDeviceIds = live
         }
-        await reconcileSleepGuard()
+        reconcileSleepGuard()
     }
 
     // MARK: - APNs config + key
@@ -272,11 +272,9 @@ public final class RemoteCoordinator: ObservableObject {
         _ = record
     }
 
-    private func reconcileSleepGuard() async {
-        let engaged = !pairedDevices.isEmpty
-        await sleepGuard.setEngaged(engaged)
-        let held = await sleepGuard.state.heldAssertion
-        await MainActor.run { self.sleepGuardHeld = held }
+    private func reconcileSleepGuard() {
+        sleepGuard.setEngaged(!pairedDevices.isEmpty)
+        sleepGuardHeld = sleepGuard.state.heldAssertion
     }
 
     private func bestHostname() -> String {
