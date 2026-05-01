@@ -31,12 +31,18 @@ public final class AppEnvironment: ObservableObject {
     public let remote: RemoteCoordinator
     public let library: LibraryStore
     public let activity: ActivityLog
-    public let llm: LLMHelper
+    /// Implicitly-unwrapped because it's assigned after all the other
+    /// stored properties — its closure captures `self`, which Swift 6
+    /// will only allow once every other `let` property is initialized.
+    public private(set) var llm: LLMHelper!
 
     @Published public var settings: AppSettings
     @Published public var lastError: String?
 
-    private let hookServer: HookSocketServer
+    /// Same rationale as `llm` — the hook handler captures `self`, so
+    /// the property is implicitly nil during stored-property setup and
+    /// gets its real value once everything else exists.
+    private var hookServer: HookSocketServer!
     private let settingsURL: URL
     private var backgroundTasks: [Task<Void, Never>] = []
 
