@@ -19,7 +19,7 @@ public struct BootstrapPlan: Equatable, Sendable {
     }
 }
 
-public struct Installer {
+public struct Installer: Sendable {
     public init() {}
 
     public static let agentNames = [

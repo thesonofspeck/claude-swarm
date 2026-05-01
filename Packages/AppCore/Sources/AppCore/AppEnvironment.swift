@@ -161,16 +161,19 @@ public final class AppEnvironment: ObservableObject {
         // session's git workspace. All best-effort; nothing fails the app.
         let kcRef = self.keychain
         let snapshotSettings = self.settings
-        Task.detached { [weak self] in
+        // Path resolution + claude --version happens off-main; no self
+        // capture so the Sendable closure stays clean under Swift 6.
+        Task.detached {
             _ = await LaunchPrewarmer.warmTools(settings: snapshotSettings)
             await MainActor.run { LaunchPrewarmer.warmKeychain(kcRef) }
-            guard let mru = snapshotSettings.lastSelectedSessionId else { return }
-            // Hop back to MainActor; the prewarmer needs env.sessionsRepo
-            // and env.gitWorkspace which are MainActor-isolated.
-            await Task { @MainActor in
+        }
+        // Workspace prewarm needs MainActor-isolated env state; run as a
+        // MainActor Task instead of bouncing through a detached one.
+        if let mru = snapshotSettings.lastSelectedSessionId {
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 await LaunchPrewarmer.warmMostRecentWorkspace(sessionId: mru, in: self)
-            }.value
+            }
         }
 
         let activityRef = self.activity
