@@ -235,9 +235,12 @@ public final class RemoteCoordinator: ObservableObject {
             queuedPushes.append((payload, collapseId))
             return
         }
+        // Serialize on the main actor so we cross into the sender actor with
+        // Sendable Data, not a non-Sendable [String: Any] dictionary.
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []) else { return }
         let recipients = await store.all().compactMap { $0.apnsToken }
         for token in recipients {
-            _ = try? await sender.send(payload: payload, to: token, collapseId: collapseId)
+            _ = try? await sender.send(payload: data, to: token, collapseId: collapseId)
         }
     }
 
@@ -249,8 +252,10 @@ public final class RemoteCoordinator: ObservableObject {
         queuedPushes.removeAll()
         let recipients = await store.all().compactMap { $0.apnsToken }
         for entry in pending {
+            guard let data = try? JSONSerialization.data(withJSONObject: entry.payload, options: []) else { continue }
+            let collapseId = entry.collapseId
             for token in recipients {
-                _ = try? await sender.send(payload: entry.payload, to: token, collapseId: entry.collapseId)
+                _ = try? await sender.send(payload: data, to: token, collapseId: collapseId)
             }
         }
     }

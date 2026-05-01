@@ -21,14 +21,22 @@ public enum LaunchPrewarmer {
         settings: AppSettings,
         env: ProcessInfo = .processInfo
     ) async -> ToolPaths {
+        // Capture only the executable path strings so the detached task
+        // doesn't have to send the whole AppSettings value across an
+        // isolation boundary. Strings are Sendable; the closure becomes
+        // safe under Swift 6 strict concurrency.
+        let claudeExe = settings.claudeExecutable
+        let ghExe = settings.ghExecutable
+        let gitExe = settings.gitExecutable
+        let pythonExe = settings.pythonExecutable
         let resolved = await Task.detached {
             ToolPaths(
-                claude: resolve(settings.claudeExecutable, fallbacks: ["/opt/homebrew/bin/claude", "/usr/local/bin/claude"]),
-                gh: settings.ghExecutable.isEmpty
+                claude: resolve(claudeExe, fallbacks: ["/opt/homebrew/bin/claude", "/usr/local/bin/claude"]),
+                gh: ghExe.isEmpty
                     ? resolve("gh", fallbacks: ["/opt/homebrew/bin/gh", "/usr/local/bin/gh"])
-                    : resolve(settings.ghExecutable, fallbacks: []),
-                git: resolve(settings.gitExecutable, fallbacks: ["/usr/bin/git", "/opt/homebrew/bin/git"]),
-                python: resolve(settings.pythonExecutable, fallbacks: ["/usr/bin/python3", "/opt/homebrew/bin/python3"])
+                    : resolve(ghExe, fallbacks: []),
+                git: resolve(gitExe, fallbacks: ["/usr/bin/git", "/opt/homebrew/bin/git"]),
+                python: resolve(pythonExe, fallbacks: ["/usr/bin/python3", "/opt/homebrew/bin/python3"])
             )
         }.value
 
