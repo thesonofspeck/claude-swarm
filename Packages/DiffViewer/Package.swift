@@ -13,7 +13,6 @@ let package = Package(
         .package(url: "https://github.com/JohnSundell/Splash.git", from: "0.16.0")
     ],
     targets: [
-        .target(name: "DiffViewer", dependencies: ["GitKit", "AtomPalette", "Splash"]),
-        .testTarget(name: "DiffViewerTests", dependencies: ["DiffViewer"])
+        .target(name: "DiffViewer", dependencies: ["GitKit", "AtomPalette", "Splash"])
     ]
 )

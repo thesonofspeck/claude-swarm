@@ -31,13 +31,16 @@ public actor RelayPushSender: PushSender {
         self.session = URLSession(configuration: cfg)
     }
 
-    public func send(payload: [String: Any], to deviceToken: String, collapseId: String?) async throws {
+    public func send(payload: Data, to deviceToken: String, collapseId: String?) async throws {
         guard config.enabled, config.isComplete, !sharedSecret.isEmpty else {
             throw RelayError.notConfigured
         }
         guard let url = URL(string: config.url) else { throw RelayError.notConfigured }
 
-        var body: [String: Any] = ["deviceToken": deviceToken, "payload": payload]
+        // The payload arrives pre-serialized; nest it inside the relay
+        // envelope as a JSON object (decoded once, re-encoded once).
+        let payloadObj = try JSONSerialization.jsonObject(with: payload, options: [])
+        var body: [String: Any] = ["deviceToken": deviceToken, "payload": payloadObj]
         if let collapseId { body["collapseId"] = collapseId }
         let bodyData = try JSONSerialization.data(withJSONObject: body, options: [])
 

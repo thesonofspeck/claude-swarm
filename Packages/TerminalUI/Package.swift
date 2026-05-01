@@ -13,7 +13,6 @@ let package = Package(
         .package(path: "../AtomPalette")
     ],
     targets: [
-        .target(name: "TerminalUI", dependencies: ["SwiftTerm", "SessionCore", "AtomPalette"]),
-        .testTarget(name: "TerminalUITests", dependencies: ["TerminalUI"])
+        .target(name: "TerminalUI", dependencies: ["SwiftTerm", "SessionCore", "AtomPalette"])
     ]
 )

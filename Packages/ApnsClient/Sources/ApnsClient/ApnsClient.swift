@@ -31,14 +31,14 @@ public actor ApnsClient: PushSender {
         self.session = URLSession(configuration: cfg)
     }
 
-    public func send(payload: [String: Any], to deviceToken: String, collapseId: String?) async throws {
+    public func send(payload: Data, to deviceToken: String, collapseId: String?) async throws {
         _ = try await send(payload: payload, to: deviceToken, priority: 10, collapseId: collapseId)
     }
 
-    /// Send a rich notification to a single device. Caller composes the
-    /// payload (`alert.title/body`, `category`, `mutable-content`, `data`).
+    /// Send a rich notification to a single device. Caller serializes the
+    /// payload to JSON `Data` first.
     @discardableResult
-    public func send(payload: [String: Any], to deviceToken: String, priority: Int = 10, collapseId: String? = nil) async throws -> Int {
+    public func send(payload: Data, to deviceToken: String, priority: Int = 10, collapseId: String? = nil) async throws -> Int {
         guard config.enabled, config.isComplete else { throw ApnsError.notConfigured }
         guard let pem = keyPem else { throw ApnsError.noKey }
 
@@ -56,7 +56,7 @@ public actor ApnsClient: PushSender {
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+        request.httpBody = payload
         request.setValue("Bearer \(token)", forHTTPHeaderField: "authorization")
         request.setValue("alert", forHTTPHeaderField: "apns-push-type")
         request.setValue(config.bundleId, forHTTPHeaderField: "apns-topic")

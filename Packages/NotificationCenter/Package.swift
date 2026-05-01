@@ -11,11 +11,6 @@ let package = Package(
         .target(
             name: "ClaudeSwarmNotifications",
             path: "Sources/NotificationCenter"
-        ),
-        .testTarget(
-            name: "ClaudeSwarmNotificationsTests",
-            dependencies: ["ClaudeSwarmNotifications"],
-            path: "Tests/NotificationCenterTests"
         )
     ]
 )

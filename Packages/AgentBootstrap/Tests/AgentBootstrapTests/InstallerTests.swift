@@ -29,9 +29,17 @@ final class InstallerTests: XCTestCase {
 
         let settings = temp.appendingPathComponent(".claude/settings.json")
         XCTAssertTrue(FileManager.default.fileExists(atPath: settings.path))
-        let settingsStr = try String(contentsOf: settings, encoding: .utf8)
-        XCTAssertTrue(settingsStr.contains(".claude/memory"),
-                      "Settings should grant permissions for the memory directory")
+        // Parse rather than substring-match: JSONSerialization on
+        // swift-foundation escapes "/" to "\\/" in serialized output,
+        // so a raw contains check would miss the path.
+        let settingsData = try Data(contentsOf: settings)
+        let settingsObj = try JSONSerialization.jsonObject(with: settingsData) as? [String: Any]
+        let permissions = settingsObj?["permissions"] as? [String: Any]
+        let allow = (permissions?["allow"] as? [String]) ?? []
+        XCTAssertTrue(
+            allow.contains(where: { $0.contains(".claude/memory") }),
+            "Settings should grant permissions for the memory directory; got \(allow)"
+        )
 
         let mcp = temp.appendingPathComponent(".mcp.json")
         XCTAssertTrue(FileManager.default.fileExists(atPath: mcp.path))

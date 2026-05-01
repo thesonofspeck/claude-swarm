@@ -29,7 +29,22 @@ public actor SleepGuard {
             heldAssertion: false
         )
         self.reason = reason
-        startObservingPower()
+        // Register the IOKit power-source watcher inline rather than via
+        // an actor-isolated helper — the actor's init runs in a sync,
+        // non-isolated context and Swift 6 forbids calling isolated
+        // members from there. The callback hops back via Task { ... }.
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        let callback: IOPowerSourceCallbackType = { ctx in
+            guard let ctx else { return }
+            let me = Unmanaged<SleepGuard>.fromOpaque(ctx).takeUnretainedValue()
+            Task { await me.refreshACPower() }
+        }
+        if let runLoopSource = IOPSNotificationCreateRunLoopSource(callback, context)?.takeRetainedValue() {
+            CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .defaultMode)
+            self.powerSource = runLoopSource
+        } else {
+            self.powerSource = nil
+        }
     }
 
     deinit {
@@ -74,19 +89,6 @@ public actor SleepGuard {
             }
         }
         return false
-    }
-
-    private func startObservingPower() {
-        let context = Unmanaged.passUnretained(self).toOpaque()
-        let callback: IOPowerSourceCallbackType = { ctx in
-            guard let ctx else { return }
-            let me = Unmanaged<SleepGuard>.fromOpaque(ctx).takeUnretainedValue()
-            Task { await me.refreshACPower() }
-        }
-        if let runLoopSource = IOPSNotificationCreateRunLoopSource(callback, context)?.takeRetainedValue() {
-            CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .defaultMode)
-            self.powerSource = runLoopSource
-        }
     }
 
     private func refreshACPower() {

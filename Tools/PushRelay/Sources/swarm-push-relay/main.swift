@@ -154,11 +154,17 @@ final class RelayHandler: ChannelInboundHandler, @unchecked Sendable {
         }
         let collapseId = json["collapseId"] as? String
 
+        // Re-serialize the payload to Data once so the Sendable Task
+        // closure doesn't have to capture a non-Sendable [String: Any].
+        guard let payloadData = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
+            respond(context: context, status: .badRequest, body: "bad payload")
+            return
+        }
         let loop = context.eventLoop
         let promise = loop.makePromise(of: Void.self)
         Task {
             do {
-                try await apns.send(payload: payload, to: token, collapseId: collapseId)
+                try await apns.send(payload: payloadData, to: token, collapseId: collapseId)
                 promise.succeed(())
             } catch {
                 promise.fail(error)
