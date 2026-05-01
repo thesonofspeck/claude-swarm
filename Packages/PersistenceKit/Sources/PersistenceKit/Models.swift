@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-public struct Project: Codable, Identifiable, Equatable, Hashable, FetchableRecord, MutablePersistableRecord {
+public struct Project: Codable, Identifiable, Equatable, Hashable, Sendable, FetchableRecord, MutablePersistableRecord {
     public var id: String
     public var name: String
     public var localPath: String
@@ -34,7 +34,7 @@ public struct Project: Codable, Identifiable, Equatable, Hashable, FetchableReco
     }
 }
 
-public enum SessionStatus: String, Codable, CaseIterable, Hashable {
+public enum SessionStatus: String, Codable, CaseIterable, Hashable, Sendable {
     case starting
     case running
     case waitingForInput
@@ -46,7 +46,7 @@ public enum SessionStatus: String, Codable, CaseIterable, Hashable {
     case failed
 }
 
-public struct Session: Codable, Identifiable, Equatable, Hashable, FetchableRecord, MutablePersistableRecord {
+public struct Session: Codable, Identifiable, Equatable, Hashable, Sendable, FetchableRecord, MutablePersistableRecord {
     public var id: String
     public var projectId: String
     public var taskId: String?
@@ -91,7 +91,7 @@ public struct Session: Codable, Identifiable, Equatable, Hashable, FetchableReco
     }
 }
 
-public struct CachedTask: Codable, Identifiable, Equatable, FetchableRecord, MutablePersistableRecord {
+public struct CachedTask: Codable, Identifiable, Equatable, Sendable, FetchableRecord, MutablePersistableRecord {
     public var id: String                 // Wrike task id
     public var projectId: String
     public var title: String
@@ -103,7 +103,7 @@ public struct CachedTask: Codable, Identifiable, Equatable, FetchableRecord, Mut
     public static let databaseTableName = "task_cache"
 }
 
-public struct CachedPR: Codable, Identifiable, Equatable, FetchableRecord, MutablePersistableRecord {
+public struct CachedPR: Codable, Identifiable, Equatable, Sendable, FetchableRecord, MutablePersistableRecord {
     public var id: String                 // owner/repo#number
     public var sessionId: String?
     public var owner: String
