@@ -32,7 +32,7 @@ public actor WorktreeJanitor {
         var deadSessions = 0
         var orphanWorktrees = 0
 
-        let projectList = (try? projects.all()) ?? []
+        let projectList = (try? await projects.all()) ?? []
         for project in projectList {
             let repoURL = URL(fileURLWithPath: project.localPath)
             let liveTrees: [Worktree]
@@ -45,7 +45,7 @@ public actor WorktreeJanitor {
             let livePaths = Set(liveTrees.map(\.path.standardizedFileURL.path))
             let dbSessions: [Session]
             do {
-                dbSessions = try sessions.forProject(project.id)
+                dbSessions = try await sessions.forProject(project.id)
             } catch {
                 log.warning("Janitor: fetch sessions failed for \(project.name, privacy: .public): \(String(describing: error), privacy: .public)")
                 continue
@@ -55,7 +55,7 @@ public actor WorktreeJanitor {
             for session in dbSessions where session.status == .running || session.status == .starting || session.status == .waitingForInput {
                 if !livePaths.contains(URL(fileURLWithPath: session.worktreePath).standardizedFileURL.path) {
                     do {
-                        try sessions.setStatus(id: session.id, .finished)
+                        try await sessions.setStatus(id: session.id, .finished)
                         deadSessions += 1
                     } catch {
                         log.error("Janitor: setStatus failed for session \(session.id, privacy: .public): \(String(describing: error), privacy: .public)")

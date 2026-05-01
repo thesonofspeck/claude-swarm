@@ -66,7 +66,11 @@ struct DetailView: View {
             registry.setForeground(newId)
         }
         .task(id: session?.projectId) {
-            project = session.flatMap { try? env.projects.find(id: $0.projectId) }
+            if let session {
+                project = try? await env.projects.find(id: session.projectId)
+            } else {
+                project = nil
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .swarmSelectTab)) { note in
             if let raw = note.object as? String, let t = DetailTab(rawValue: raw) {
@@ -131,7 +135,7 @@ struct TerminalTab: View {
             if let spec = registry.spec(for: session.id) {
                 PTYTerminalView(spec: spec) { _ in
                     Task { @MainActor in
-                        try? env.sessionsRepo.setStatus(id: session.id, .finished)
+                        try? await env.sessionsRepo.setStatus(id: session.id, .finished)
                         registry.remove(id: session.id)
                     }
                 }

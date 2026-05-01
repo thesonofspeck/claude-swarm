@@ -23,6 +23,9 @@ public final class RemoteCoordinator: ObservableObject {
     @Published public var pushConfig: PushBackendConfig
     @Published public private(set) var sleepGuardHeld: Bool = false
 
+    nonisolated(unsafe) private static let decoder = JSONDecoder()
+    nonisolated(unsafe) private static let encoder = JSONEncoder()
+
     public var apnsConfig: ApnsConfig {
         get { pushConfig.direct }
         set { pushConfig.direct = newValue; saveConfig() }
@@ -82,10 +85,10 @@ public final class RemoteCoordinator: ObservableObject {
         try AppDirectories.ensureExists()
         self.configURL = AppDirectories.supportRoot.appendingPathComponent("push.json")
         if let data = try? Data(contentsOf: configURL),
-           let cfg = try? JSONDecoder().decode(PushBackendConfig.self, from: data) {
+           let cfg = try? Self.decoder.decode(PushBackendConfig.self, from: data) {
             self.pushConfig = cfg
         } else if let legacyData = try? Data(contentsOf: AppDirectories.supportRoot.appendingPathComponent("apns.json")),
-                  let legacy = try? JSONDecoder().decode(ApnsConfig.self, from: legacyData) {
+                  let legacy = try? Self.decoder.decode(ApnsConfig.self, from: legacyData) {
             self.pushConfig = PushBackendConfig(backend: .direct, direct: legacy, relay: .init())
         } else {
             self.pushConfig = PushBackendConfig()
@@ -167,7 +170,7 @@ public final class RemoteCoordinator: ObservableObject {
     }
 
     private func saveConfig() {
-        try? JSONEncoder().encode(pushConfig).write(to: configURL, options: .atomic)
+        try? Self.encoder.encode(pushConfig).write(to: configURL, options: .atomic)
     }
 
     private func rebuildSender() {

@@ -33,7 +33,8 @@ public struct PTYTerminalView: NSViewRepresentable {
         )
 
         if let prompt = spec.initialPrompt, !prompt.isEmpty {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(600))
                 view.send(txt: prompt + "\n")
             }
         }

@@ -67,7 +67,7 @@ public enum LaunchPrewarmer {
         sessionId: String,
         in env: AppEnvironment
     ) async {
-        guard let session = try? env.sessionsRepo.find(id: sessionId) else { return }
+        guard let session = try? await env.sessionsRepo.find(id: sessionId) else { return }
         let ws = env.gitWorkspace(for: session.worktreePath)
         await ws.reloadAll()
     }

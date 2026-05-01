@@ -440,7 +440,7 @@ struct PRTab: View {
                 base: project.defaultBaseBranch,
                 head: nil
             )
-            try env.sessionsRepo.upsert({
+            try await env.sessionsRepo.upsert({
                 var s = session
                 s.prNumber = result.number
                 s.status = .prOpen

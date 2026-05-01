@@ -32,15 +32,15 @@ public struct ActivityLog: Sendable {
     public let db: Database
     public init(db: Database) { self.db = db }
 
-    public func append(_ event: ActivityEvent) throws {
-        try db.queue.write { conn in
+    public func append(_ event: ActivityEvent) async throws {
+        try await db.queue.write { conn in
             var e = event
             try e.save(conn)
         }
     }
 
-    public func recent(limit: Int = 200) throws -> [ActivityEvent] {
-        try db.queue.read { conn in
+    public func recent(limit: Int = 200) async throws -> [ActivityEvent] {
+        try await db.queue.read { conn in
             try ActivityEvent
                 .order(Column("timestamp").desc)
                 .limit(limit)
@@ -48,9 +48,10 @@ public struct ActivityLog: Sendable {
         }
     }
 
-    public func purgeOlderThan(days: Int) throws {
-        let cutoff = Date().addingTimeInterval(-Double(days) * 24 * 3600)
-        try db.queue.write { conn in
+    public func purgeOlderThan(days: Int) async throws {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())
+            ?? Date(timeIntervalSinceNow: -Double(days) * 24 * 3600)
+        try await db.queue.write { conn in
             try conn.execute(
                 sql: "DELETE FROM activity WHERE timestamp < ?",
                 arguments: [cutoff]

@@ -181,10 +181,10 @@ public final class AppEnvironment: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let id = event.sessionId else { return }
                 if let status = event.resultingStatus {
-                    try? repoRef.setStatus(id: id, status)
+                    try? await repoRef.setStatus(id: id, status)
                 }
-                let session = try? repoRef.find(id: id)
-                try? activityRef.append(ActivityEvent(
+                let session = try? await repoRef.find(id: id)
+                try? await activityRef.append(ActivityEvent(
                     sessionId: id,
                     projectId: session?.projectId,
                     kind: event.kind.rawValue,
@@ -206,8 +206,8 @@ public final class AppEnvironment: ObservableObject {
                         body: event.message ?? "",
                         isForeground: isForeground
                     )
-                    if let session = try? repoRef.find(id: id),
-                       let project = try? projectsRef.find(id: session.projectId),
+                    if let session = try? await repoRef.find(id: id),
+                       let project = try? await projectsRef.find(id: session.projectId),
                        let remote = remoteRef {
                         // Stable id derived from sessionId + prompt so a
                         // hook firing twice (retry / reconnect) collapses
@@ -226,8 +226,8 @@ public final class AppEnvironment: ObservableObject {
                     }
                 }
                 if let remote = remoteRef,
-                   let session = try? repoRef.find(id: id),
-                   let project = try? projectsRef.find(id: session.projectId) {
+                   let session = try? await repoRef.find(id: id),
+                   let project = try? await projectsRef.find(id: session.projectId) {
                     let payload = SessionSummary(
                         id: session.id,
                         projectId: session.projectId,
@@ -396,15 +396,20 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case lastSelectedSessionId
     }
 
+    nonisolated(unsafe) private static let decoder = JSONDecoder()
+    nonisolated(unsafe) private static let encoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return e
+    }()
+
     static func load(from url: URL) -> AppSettings? {
         guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(AppSettings.self, from: data)
+        return try? decoder.decode(AppSettings.self, from: data)
     }
 
     func save(to url: URL) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(self)
+        let data = try Self.encoder.encode(self)
         try data.write(to: url, options: .atomic)
     }
 }

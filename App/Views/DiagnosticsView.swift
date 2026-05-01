@@ -173,7 +173,7 @@ struct DiagnosticsView: View {
     }
 
     private func projectsCheck() async -> Check {
-        let count = (try? env.projects.all().count) ?? 0
+        let count = (try? await env.projects.all().count) ?? 0
         return Check(
             title: "Projects",
             detail: "\(count) registered",

@@ -80,9 +80,12 @@ struct RootSplitView: View {
             }
             if !didRestoreSelection {
                 didRestoreSelection = true
-                if let id = env.settings.lastSelectedSessionId,
-                   let session = try? env.sessionsRepo.find(id: id) {
-                    selectedSession = session
+                if let id = env.settings.lastSelectedSessionId {
+                    Task {
+                        if let session = try? await env.sessionsRepo.find(id: id) {
+                            selectedSession = session
+                        }
+                    }
                 }
             }
         }

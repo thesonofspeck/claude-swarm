@@ -50,6 +50,8 @@ public enum TeamLibraryConfig: Codable, Equatable, Sendable {
 /// Resolves the team library on disk. `git` config clones into a cache and
 /// pulls on refresh; `local` returns the path directly.
 public actor TeamLibrarySource {
+    nonisolated(unsafe) fileprivate static let decoder = JSONDecoder()
+
     public enum SourceError: Error, LocalizedError {
         case notConfigured
         case cloneFailed(String)
@@ -93,8 +95,7 @@ public actor TeamLibrarySource {
         }
         do {
             let data = try Data(contentsOf: manifestURL)
-            let decoder = JSONDecoder()
-            let manifest = try decoder.decode(LibraryManifest.self, from: data)
+            let manifest = try Self.decoder.decode(LibraryManifest.self, from: data)
             return (manifest, root)
         } catch {
             throw SourceError.decodeFailed(error)

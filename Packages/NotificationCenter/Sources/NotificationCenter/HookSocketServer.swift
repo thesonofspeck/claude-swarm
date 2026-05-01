@@ -14,6 +14,12 @@ import Darwin
 public final class HookSocketServer {
     public typealias Handler = @Sendable (HookEvent) -> Void
 
+    nonisolated(unsafe) private static let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+
     private let socketURL: URL
     private let handler: Handler
     private let lock = NSLock()
@@ -107,9 +113,7 @@ public final class HookSocketServer {
             if buffer.contains(0x0a) { break }
         }
         guard !buffer.isEmpty else { return }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        if let event = try? decoder.decode(HookEvent.self, from: buffer) {
+        if let event = try? Self.decoder.decode(HookEvent.self, from: buffer) {
             handler(event)
         }
     }

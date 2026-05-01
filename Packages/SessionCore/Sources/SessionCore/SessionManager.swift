@@ -40,7 +40,7 @@ public actor SessionManager {
 
     /// Bootstraps a project on registration: installs the 6 default subagents,
     /// hooks, the memory skill, and the empty `.mcp.json` into the project root.
-    public func bootstrap(project: Project) throws {
+    public func bootstrap(project: Project) async throws {
         let plan = BootstrapPlan(
             projectURL: URL(fileURLWithPath: project.localPath),
             projectId: project.id,
@@ -57,7 +57,7 @@ public actor SessionManager {
         initialPrompt: String?,
         claudeExecutable: String = "/usr/local/bin/claude"
     ) async throws -> StartResult {
-        try bootstrap(project: project)
+        try await bootstrap(project: project)
 
         let sessionId = UUID().uuidString
         let branch = BranchNamer.branch(taskId: taskId, title: taskTitle)
@@ -86,7 +86,7 @@ public actor SessionManager {
             status: .starting,
             transcriptPath: transcriptURL.path
         )
-        try sessions.upsert(session)
+        try await sessions.upsert(session)
 
         let env = [
             "CLAUDE_SWARM_SESSION_ID": sessionId,
@@ -120,18 +120,18 @@ public actor SessionManager {
         )
 
         session.status = .running
-        try sessions.upsert(session)
+        try await sessions.upsert(session)
         return StartResult(session: session, spec: spec)
     }
 
-    public func mark(sessionId: String, status: SessionStatus) throws {
-        try sessions.setStatus(id: sessionId, status)
+    public func mark(sessionId: String, status: SessionStatus) async throws {
+        try await sessions.setStatus(id: sessionId, status)
     }
 
     public func close(sessionId: String, deleteWorktree: Bool) async throws {
-        guard let session = try sessions.find(id: sessionId) else { return }
+        guard let session = try await sessions.find(id: sessionId) else { return }
         if deleteWorktree {
-            if let project = try projects.find(id: session.projectId) {
+            if let project = try await projects.find(id: session.projectId) {
                 try await worktrees.remove(
                     repo: URL(fileURLWithPath: project.localPath),
                     worktreePath: URL(fileURLWithPath: session.worktreePath),
@@ -139,7 +139,7 @@ public actor SessionManager {
                 )
             }
         }
-        try sessions.setStatus(id: sessionId, .archived)
+        try await sessions.setStatus(id: sessionId, .archived)
     }
 
     private func sanitize(_ name: String) -> String {

@@ -79,7 +79,7 @@ struct SidebarView: View {
             showingAddProject = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .swarmRefresh)) { _ in
-            projectList.reload()
+            Task { await projectList.reload() }
         }
     }
 
@@ -96,7 +96,7 @@ struct SidebarView: View {
         Button(role: .destructive) {
             Task {
                 try? await env.sessionManager.close(sessionId: session.id, deleteWorktree: true)
-                projectList.reload()
+                await projectList.reload()
             }
         } label: { Label("Delete worktree…", systemImage: "trash") }
     }
@@ -116,7 +116,7 @@ struct SidebarView: View {
         } label: { Label("Reset agents to default", systemImage: "arrow.counterclockwise") }
         Divider()
         Button(role: .destructive) {
-            projectList.remove(projectId: project.id)
+            Task { await projectList.remove(projectId: project.id) }
         } label: { Label("Remove project", systemImage: "minus.circle") }
     }
 
@@ -345,8 +345,9 @@ struct ProjectDropDelegate: DropDelegate {
             guard let url else { return }
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { return }
-            DispatchQueue.main.async {
-                sheetPath = url.path
+            let path = url.path
+            Task { @MainActor in
+                sheetPath = path
                 showSheet = true
             }
         }

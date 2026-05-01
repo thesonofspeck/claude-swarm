@@ -22,7 +22,7 @@ public final class ProjectListViewModel: ObservableObject {
         self.projectsRepo = projects
         self.sessionsRepo = sessions
         self.manager = manager
-        reload()
+        Task { await self.reload() }
         startPolling()
     }
 
@@ -30,10 +30,10 @@ public final class ProjectListViewModel: ObservableObject {
         refreshTask?.cancel()
     }
 
-    public func reload() {
+    public func reload() async {
         do {
-            let newProjects = try projectsRepo.all()
-            let newSessions = try sessionsRepo.allByProject()
+            let newProjects = try await projectsRepo.all()
+            let newSessions = try await sessionsRepo.allByProject()
             if newProjects != projects {
                 projects = newProjects
             }
@@ -62,18 +62,18 @@ public final class ProjectListViewModel: ObservableObject {
                 githubOwner: githubOwner?.isEmpty == false ? githubOwner : nil,
                 githubRepo: githubRepo?.isEmpty == false ? githubRepo : nil
             )
-            try projectsRepo.upsert(project)
+            try await projectsRepo.upsert(project)
             try await manager.bootstrap(project: project)
-            reload()
+            await reload()
         } catch {
             self.error = "\(error)"
         }
     }
 
-    public func remove(projectId: String) {
+    public func remove(projectId: String) async {
         do {
-            try projectsRepo.delete(id: projectId)
-            reload()
+            try await projectsRepo.delete(id: projectId)
+            await reload()
         } catch {
             self.error = "\(error)"
         }
@@ -87,13 +87,13 @@ public final class ProjectListViewModel: ObservableObject {
     /// instant in the sidebar and slow enough that the SQLite read cost
     /// is irrelevant (the equality guard further skips re-publishes when
     /// nothing changed).
-    private static let pollInterval: TimeInterval = 2
+    private static let pollInterval: Duration = .seconds(2)
 
     private func startPolling() {
         refreshTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(Self.pollInterval * 1_000_000_000))
-                self?.reload()
+                try? await Task.sleep(for: Self.pollInterval)
+                await self?.reload()
             }
         }
     }

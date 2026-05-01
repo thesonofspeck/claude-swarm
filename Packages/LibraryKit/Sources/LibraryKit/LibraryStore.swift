@@ -351,12 +351,22 @@ public actor LibraryStore {
 
     // MARK: - Lock file
 
+    nonisolated(unsafe) private static let lockDecoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+    nonisolated(unsafe) private static let lockEncoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.dateEncodingStrategy = .iso8601
+        e.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return e
+    }()
+
     private func loadLock(in projectRoot: URL) throws -> LibraryLock {
         let url = projectRoot.appendingPathComponent(".claude/swarm-library.lock.json")
         guard let data = try? Data(contentsOf: url) else { return LibraryLock() }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(LibraryLock.self, from: data)
+        return try Self.lockDecoder.decode(LibraryLock.self, from: data)
     }
 
     private func saveLock(_ lock: LibraryLock, in projectRoot: URL) throws {
@@ -365,10 +375,7 @@ public actor LibraryStore {
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(lock)
+        let data = try Self.lockEncoder.encode(lock)
         try data.write(to: url, options: .atomic)
     }
 

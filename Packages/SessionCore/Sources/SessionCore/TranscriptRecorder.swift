@@ -1,5 +1,9 @@
 import Foundation
 
+// All mutable state (`handle`, `bytesWritten`, `closed`) is serialised via
+// `queue`. `@unchecked Sendable` is the cleanest expression of that — using
+// an actor would ripple `await` through every call site that just needs to
+// fire-and-forget a transcript line.
 public final class TranscriptRecorder: @unchecked Sendable {
     private let url: URL
     private let maxBytes: UInt64
@@ -17,13 +21,17 @@ public final class TranscriptRecorder: @unchecked Sendable {
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        if !FileManager.default.fileExists(atPath: url.path) {
+        let handle: FileHandle
+        if let existing = try? FileHandle(forWritingTo: url) {
+            handle = existing
+        } else {
             FileManager.default.createFile(atPath: url.path, contents: nil)
+            handle = try FileHandle(forWritingTo: url)
         }
-        let handle = try FileHandle(forWritingTo: url)
         try handle.seekToEnd()
         self.handle = handle
-        self.bytesWritten = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? UInt64) ?? 0
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        self.bytesWritten = UInt64(size)
     }
 
     deinit {

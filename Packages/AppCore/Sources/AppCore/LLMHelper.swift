@@ -21,6 +21,9 @@ public final class LLMHelper: ObservableObject {
 
     @Published public var config: Config
 
+    nonisolated(unsafe) private static let decoder = JSONDecoder()
+    nonisolated(unsafe) private static let encoder = JSONEncoder()
+
     private let configURL: URL
     private let claudeExecutableProvider: () -> String
     private let projectRootProvider: () -> URL?
@@ -35,7 +38,7 @@ public final class LLMHelper: ObservableObject {
         if let config {
             self.config = config
         } else if let data = try? Data(contentsOf: url),
-                  let decoded = try? JSONDecoder().decode(Config.self, from: data) {
+                  let decoded = try? Self.decoder.decode(Config.self, from: data) {
             self.config = decoded
         } else {
             self.config = Config()
@@ -46,7 +49,7 @@ public final class LLMHelper: ObservableObject {
 
     public func saveConfig(_ cfg: Config) {
         config = cfg
-        try? JSONEncoder().encode(cfg).write(to: configURL, options: .atomic)
+        try? Self.encoder.encode(cfg).write(to: configURL, options: .atomic)
     }
 
     public var isUsable: Bool {
@@ -162,7 +165,7 @@ public final class LLMHelper: ObservableObject {
                     process.terminate()
                     throw LLMError.timedOut(seconds: timeout)
                 }
-                try? await Task.sleep(nanoseconds: 100_000_000)
+                try? await Task.sleep(for: .milliseconds(100))
                 if Task.isCancelled {
                     process.terminate()
                     throw CancellationError()

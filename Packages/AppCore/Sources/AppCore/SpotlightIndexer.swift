@@ -29,7 +29,7 @@ public actor SpotlightIndexer {
         #if canImport(CoreSpotlight)
         let index = CSSearchableIndex.default()
         var items: [CSSearchableItem] = []
-        items.append(contentsOf: sessionItems())
+        items.append(contentsOf: await sessionItems())
         items.append(contentsOf: await memoryItems())
         try? await index.indexSearchableItems(items)
         #endif
@@ -43,9 +43,9 @@ public actor SpotlightIndexer {
     }
 
     #if canImport(CoreSpotlight)
-    private func sessionItems() -> [CSSearchableItem] {
-        let projectMap = Dictionary(uniqueKeysWithValues: ((try? projects.all()) ?? []).map { ($0.id, $0) })
-        let allSessions = (try? sessions.allByProject().values.flatMap { $0 }) ?? []
+    private func sessionItems() async -> [CSSearchableItem] {
+        let projectMap = Dictionary(uniqueKeysWithValues: ((try? await projects.all()) ?? []).map { ($0.id, $0) })
+        let allSessions = (try? await sessions.allByProject().values.flatMap { $0 }) ?? []
         return allSessions.map { session in
             let attrs = CSSearchableItemAttributeSet(contentType: .text)
             attrs.title = session.taskTitle ?? session.branch
@@ -72,7 +72,7 @@ public actor SpotlightIndexer {
             entries.append(contentsOf: globalEntries)
         }
         // Per-project stores.
-        for project in (try? projects.all()) ?? [] {
+        for project in (try? await projects.all()) ?? [] {
             let root = URL(fileURLWithPath: project.localPath)
             guard let store = try? MemoryStore(
                 projectRoot: root,

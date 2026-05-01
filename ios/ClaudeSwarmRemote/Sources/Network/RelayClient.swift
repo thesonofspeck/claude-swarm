@@ -182,7 +182,7 @@ final class RelayClient: ObservableObject {
         let delay = min(pow(2.0, Double(reconnectAttempts)), 30)
         reconnectTask?.cancel()
         reconnectTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            try? await Task.sleep(for: .seconds(delay))
             self?.connect()
         }
     }

@@ -2,6 +2,13 @@ import Foundation
 import KeychainKit
 
 public actor WrikeClient {
+    nonisolated(unsafe) private static let encoder = JSONEncoder()
+    nonisolated(unsafe) private static let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+
     public enum WrikeError: Error, LocalizedError {
         case missingToken
         case http(status: Int, body: String)
@@ -144,8 +151,7 @@ public actor WrikeClient {
     private func sendJSON<T: Decodable, Body: Encodable>(
         method: String, path: String, body: Body
     ) async throws -> [T] {
-        let encoder = JSONEncoder()
-        let data = try encoder.encode(body)
+        let data = try Self.encoder.encode(body)
         return try await send(method: method, path: path, jsonBody: data)
     }
 
@@ -204,10 +210,8 @@ public actor WrikeClient {
                 }
                 switch http.statusCode {
                 case 200..<300:
-                    let decoder = JSONDecoder()
-                    decoder.dateDecodingStrategy = .iso8601
                     do {
-                        return try decoder.decode(WrikeEnvelope<T>.self, from: data).data
+                        return try Self.decoder.decode(WrikeEnvelope<T>.self, from: data).data
                     } catch {
                         throw WrikeError.decoding(error)
                     }

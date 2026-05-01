@@ -30,6 +30,12 @@ public enum GhError: Error, LocalizedError {
 /// Thin async wrapper around the `gh` CLI. All GitHub interactions in the
 /// app go through here so we inherit user auth, scopes, and host config.
 public struct GhRunner: Sendable {
+    nonisolated(unsafe) private static let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+
     public let executable: String
 
     public init(executable: String? = nil) {
@@ -114,9 +120,7 @@ public struct GhRunner: Sendable {
         let result = try await run(args, in: directory)
         let data = Data(result.stdout.utf8)
         do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            return try decoder.decode(T.self, from: data)
+            return try Self.decoder.decode(T.self, from: data)
         } catch {
             throw GhError.decoding(error)
         }

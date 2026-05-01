@@ -13,6 +13,18 @@ public struct HistoryService: Sendable {
     public let runner: GitRunner
     public init(runner: GitRunner = GitRunner()) { self.runner = runner }
 
+    // ISO8601DateFormatter is documented thread-safe for read-only use.
+    nonisolated(unsafe) private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    nonisolated(unsafe) private static let iso: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
     public func log(in repo: URL, ref: String = "HEAD", limit: Int = 200) async throws -> [CommitSummary] {
         // Use a unit separator and record separator to avoid quoting issues.
         let format = "%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s%x1e"
@@ -20,17 +32,13 @@ public struct HistoryService: Sendable {
             ["log", "--max-count=\(limit)", "--pretty=format:\(format)", ref],
             in: repo
         )
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let alt = ISO8601DateFormatter()
-        alt.formatOptions = [.withInternetDateTime]
-
         return result.stdout
             .split(separator: "\u{1e}", omittingEmptySubsequences: true)
             .compactMap { record -> CommitSummary? in
                 let fields = record.split(separator: "\u{1f}", omittingEmptySubsequences: false)
                 guard fields.count >= 6 else { return nil }
-                let date = formatter.date(from: String(fields[4])) ?? alt.date(from: String(fields[4])) ?? Date()
+                let raw = String(fields[4])
+                let date = Self.isoFractional.date(from: raw) ?? Self.iso.date(from: raw) ?? Date()
                 return CommitSummary(
                     id: String(fields[0]),
                     parents: String(fields[1]).split(separator: " ").map(String.init),
