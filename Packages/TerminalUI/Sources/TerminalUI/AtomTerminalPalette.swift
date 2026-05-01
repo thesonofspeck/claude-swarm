@@ -5,27 +5,36 @@ import AtomPalette
 
 /// Atom One Light + Dark 16-color ANSI palettes for the embedded terminal.
 /// Hex values come from the shared AtomPalette package.
+///
+/// All `current*` accessors are `@MainActor` because they read
+/// `NSApp.effectiveAppearance`, which is MainActor-isolated.
 public enum AtomTerminalPalette {
+    @MainActor
     public static func currentColors() -> [SwiftTerm.Color] {
         isDarkAppearance() ? darkColors : lightColors
     }
 
+    @MainActor
     public static func currentBackground() -> NSColor {
         ns(isDarkAppearance() ? AtomHex.bgBase.dark : AtomHex.bgBase.light)
     }
 
+    @MainActor
     public static func currentForeground() -> NSColor {
         ns(isDarkAppearance() ? AtomHex.fg.dark : AtomHex.fg.light)
     }
 
+    @MainActor
     public static func currentCursor() -> NSColor {
         ns(isDarkAppearance() ? AtomHex.blue.dark : AtomHex.blue.light)
     }
 
+    @MainActor
     public static func currentSelection() -> NSColor {
         ns(isDarkAppearance() ? AtomHex.bgSelection.dark : AtomHex.bgSelection.light)
     }
 
+    @MainActor
     private static func isDarkAppearance() -> Bool {
         NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .vibrantDark]) != nil
     }
