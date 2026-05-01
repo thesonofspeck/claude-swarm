@@ -9,7 +9,7 @@ public struct CommitSummary: Equatable, Identifiable {
     public let subject: String
 }
 
-public struct HistoryService {
+public struct HistoryService: Sendable {
     public let runner: GitRunner
     public init(runner: GitRunner = GitRunner()) { self.runner = runner }
 
@@ -43,7 +43,7 @@ public struct HistoryService {
     }
 }
 
-public struct DiffService {
+public struct DiffService: Sendable {
     public let runner: GitRunner
     public init(runner: GitRunner = GitRunner()) { self.runner = runner }
 
@@ -54,8 +54,27 @@ public struct DiffService {
         return DiffParser.parse(result.stdout)
     }
 
+    /// Per-file diff — preferred when the UI only needs to refresh one
+    /// path's diff. Avoids re-parsing the whole worktree on every selection
+    /// or every saved keystroke when an agent is editing.
+    public func workingTreeDiff(in repo: URL, path: String) async throws -> [DiffFile] {
+        let result = try await runner.run(
+            ["diff", "--no-color", "--unified=3", "--", path],
+            in: repo
+        )
+        return DiffParser.parse(result.stdout)
+    }
+
     public func stagedDiff(in repo: URL) async throws -> [DiffFile] {
         let result = try await runner.run(["diff", "--no-color", "--cached", "--unified=3"], in: repo)
+        return DiffParser.parse(result.stdout)
+    }
+
+    public func stagedDiff(in repo: URL, path: String) async throws -> [DiffFile] {
+        let result = try await runner.run(
+            ["diff", "--no-color", "--cached", "--unified=3", "--", path],
+            in: repo
+        )
         return DiffParser.parse(result.stdout)
     }
 

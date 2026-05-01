@@ -154,7 +154,6 @@ struct DiffTab: View {
     let session: Session
     @State private var files: [DiffFile] = []
     @State private var loading = true
-    @State private var watcher: FileWatcher?
 
     var body: some View {
         Group {
@@ -166,24 +165,25 @@ struct DiffTab: View {
         }
         .task(id: session.id) {
             await reload()
-            watcher?.stop()
-            let url = URL(fileURLWithPath: session.worktreePath)
-            let w = FileWatcher(url: url) {
-                Task { await reload() }
-            }
-            w.start()
-            watcher = w
         }
-        .onDisappear { watcher?.stop(); watcher = nil }
+        .task(id: session.id) {
+            // Pulse-driven reloads — fires after FSEvents debounce, after
+            // PostToolUse hooks, and after every completed git operation
+            // that touches working state.
+            let ws = env.gitWorkspace(for: session.worktreePath)
+            for await invalidations in ws.pulse.events() {
+                if invalidations.contains(.status) || invalidations.contains(.files) {
+                    await reload()
+                }
+            }
+        }
     }
 
     private func reload() async {
         let url = URL(fileURLWithPath: session.worktreePath)
         let result = (try? await env.diff.workingTreeDiff(in: url)) ?? []
-        await MainActor.run {
-            files = result
-            loading = false
-        }
+        files = result
+        loading = false
     }
 }
 
@@ -224,8 +224,15 @@ struct HistoryTab: View {
             .scrollContentBackground(.hidden)
             .background(Palette.bgBase)
             .task(id: session.id) {
-                let url = URL(fileURLWithPath: session.worktreePath)
-                commits = (try? await env.history.log(in: url)) ?? []
+                await reloadCommits()
+            }
+            .task(id: session.id) {
+                let ws = env.gitWorkspace(for: session.worktreePath)
+                for await invalidations in ws.pulse.events() {
+                    if invalidations.contains(.history) || invalidations.contains(.branches) {
+                        await reloadCommits()
+                    }
+                }
             }
 
             DiffView(files: commitDiff)
@@ -237,6 +244,11 @@ struct HistoryTab: View {
                 commitDiff = (try? await env.diff.commitDiff(in: url, sha: sha)) ?? []
             }
         }
+    }
+
+    private func reloadCommits() async {
+        let url = URL(fileURLWithPath: session.worktreePath)
+        commits = (try? await env.history.log(in: url)) ?? []
     }
 
     @ViewBuilder

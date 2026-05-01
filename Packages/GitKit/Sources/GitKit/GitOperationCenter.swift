@@ -18,13 +18,13 @@ public actor GitOperationCenter {
     /// Multicast event stream. Each subscriber gets every event from
     /// subscription onward; historical events are not replayed.
     public func events() -> AsyncStream<GitOperationEvent> {
-        AsyncStream { cont in
-            let id = UUID()
-            self.register(id: id, continuation: cont)
-            cont.onTermination = { [weak self] _ in
-                Task { await self?.unregister(id: id) }
-            }
+        let id = UUID()
+        let (stream, cont) = AsyncStream<GitOperationEvent>.makeStream()
+        register(id: id, continuation: cont)
+        cont.onTermination = { [weak self] _ in
+            Task { await self?.unregister(id: id) }
         }
+        return stream
     }
 
     public func run<T: Sendable>(

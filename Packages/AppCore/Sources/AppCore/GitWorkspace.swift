@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import GitKit
+import os
 
 /// View-model for a single working tree's full git surface. Owns the
 /// services so views don't have to wire them up, holds the live status,
@@ -20,6 +21,11 @@ public final class GitWorkspace: ObservableObject {
     public let history: HistoryService
     public let diff: DiffService
 
+    /// Single coalesced invalidation source. Tabs subscribe to this and
+    /// reload the slice of state they care about — instead of each tab
+    /// running its own FileWatcher and re-fetching everything.
+    public let pulse: WorkspacePulse
+
     @Published public private(set) var changes: [WorkingChange] = []
     @Published public private(set) var branchList: [BranchRef] = []
     @Published public private(set) var stashes: [StashEntry] = []
@@ -37,6 +43,10 @@ public final class GitWorkspace: ObservableObject {
     @Published public private(set) var statusLine: String?
 
     private var eventTask: Task<Void, Never>?
+    private var pulseTask: Task<Void, Never>?
+    private var fileWatcher: FileWatcher?
+
+    private static let signpostLog = OSLog(subsystem: "com.claudeswarm", category: .pointsOfInterest)
 
     public init(repo: URL, runner: GitRunner = GitRunner()) {
         self.repo = repo
@@ -50,11 +60,16 @@ public final class GitWorkspace: ObservableObject {
         self.merge = MergeService(runner: runner)
         self.history = HistoryService(runner: runner)
         self.diff = DiffService(runner: runner)
+        self.pulse = WorkspacePulse()
         startListening()
+        startWatchingFiles()
+        startConsumingPulse()
     }
 
     deinit {
         eventTask?.cancel()
+        pulseTask?.cancel()
+        fileWatcher?.stop()
     }
 
     private func startListening() {
@@ -63,6 +78,66 @@ public final class GitWorkspace: ObservableObject {
             for await event in await center.events() {
                 await MainActor.run { self?.consume(event) }
             }
+        }
+    }
+
+    private func startWatchingFiles() {
+        let watcher = FileWatcher(url: repo, debounce: 0.15) { [weak self] in
+            Task { @MainActor [weak self] in
+                // FSEvents on the worktree root means file content changed;
+                // status + history could move; branches usually don't.
+                self?.pulse.ping([.status, .files, .history])
+            }
+        }
+        watcher.start()
+        fileWatcher = watcher
+    }
+
+    private func startConsumingPulse() {
+        pulseTask = Task { @MainActor [weak self] in
+            guard let stream = self?.pulse.events() else { return }
+            for await invalidations in stream {
+                await self?.handleInvalidation(invalidations)
+            }
+        }
+    }
+
+    private func handleInvalidation(_ kinds: Set<WorkspaceInvalidation>) async {
+        // The workspace itself only owns the @Published slices; views that
+        // care about `.files` or `.history` subscribe directly to the pulse
+        // to reload their own data. We just refresh what we hold.
+        if kinds.contains(.status) { await reloadStatus() }
+        if kinds.contains(.branches) { await reloadBranches() }
+        if kinds.contains(.stashes) { await reloadStashes() }
+        if kinds.contains(.tags) { await reloadTags() }
+    }
+
+    /// Allow callers (AppEnvironment hook handler, tabs that want to force
+    /// a reload of e.g. files) to push invalidations into the pulse.
+    public func invalidate(_ kinds: Set<WorkspaceInvalidation>) {
+        pulse.ping(kinds)
+    }
+
+    /// Map a completed git operation into the categories it could possibly
+    /// have invalidated, then push them onto the pulse so subscribers
+    /// reload exactly the slices that matter.
+    private func invalidations(after kind: GitOperationKind) -> Set<WorkspaceInvalidation> {
+        switch kind {
+        case .stage, .unstage, .discard, .status:
+            return [.status]
+        case .commit, .amend:
+            return [.status, .branches, .history]
+        case .fetch:
+            return [.branches]
+        case .pull, .push, .merge, .rebase, .cherryPick, .revert,
+             .mergeContinue, .rebaseContinue, .mergeAbort, .rebaseAbort:
+            return [.status, .branches, .history]
+        case .branchCreate, .branchSwitch, .branchDelete, .branchRename, .setUpstream:
+            return [.branches, .status, .history]
+        case .stashSave, .stashApply, .stashPop, .stashDrop:
+            return [.status, .stashes]
+        case .tagCreate, .tagDelete, .tagPush:
+            return [.tags]
         }
     }
 
@@ -75,6 +150,9 @@ public final class GitWorkspace: ObservableObject {
         case .succeeded:
             busy = false
             statusLine = "\(event.kind.label) done"
+            // Push the categories this op touched onto the pulse so every
+            // tab reloads the right slice without polling.
+            pulse.ping(invalidations(after: event.kind))
         case .failed(let msg):
             busy = false
             statusLine = "\(event.kind.label) failed"
@@ -89,6 +167,9 @@ public final class GitWorkspace: ObservableObject {
     /// after any mutation. Individual sections also have their own
     /// reload helpers if a single mutation only invalidates part of state.
     public func reloadAll() async {
+        let signpost = OSSignpostID(log: Self.signpostLog)
+        os_signpost(.begin, log: Self.signpostLog, name: "reloadAll", signpostID: signpost)
+        defer { os_signpost(.end, log: Self.signpostLog, name: "reloadAll", signpostID: signpost) }
         async let s: Void = reloadStatus()
         async let b: Void = reloadBranches()
         async let st: Void = reloadStashes()
@@ -99,6 +180,9 @@ public final class GitWorkspace: ObservableObject {
     }
 
     public func reloadStatus() async {
+        let signpost = OSSignpostID(log: Self.signpostLog)
+        os_signpost(.begin, log: Self.signpostLog, name: "reloadStatus", signpostID: signpost)
+        defer { os_signpost(.end, log: Self.signpostLog, name: "reloadStatus", signpostID: signpost) }
         do {
             let result = try await center.run(.status) { runner in
                 try await StatusService(runner: runner).status(in: repo)
@@ -111,7 +195,31 @@ public final class GitWorkspace: ObservableObject {
         }
     }
 
+    // MARK: - Per-file diff
+
+    /// Fetches just the diff for a single path. Far cheaper than re-running
+    /// `git diff` for the whole worktree on every selection change — when
+    /// the agent is editing one file, only that file's diff needs to refresh.
+    public func diffForFile(_ path: String, staged: Bool) async -> [DiffFile] {
+        let signpost = OSSignpostID(log: Self.signpostLog)
+        os_signpost(.begin, log: Self.signpostLog, name: "diffForFile", signpostID: signpost,
+                    "%{public}s", path)
+        defer { os_signpost(.end, log: Self.signpostLog, name: "diffForFile", signpostID: signpost) }
+        do {
+            if staged {
+                return try await diff.stagedDiff(in: repo, path: path)
+            } else {
+                return try await diff.workingTreeDiff(in: repo, path: path)
+            }
+        } catch {
+            return []
+        }
+    }
+
     public func reloadBranches() async {
+        let signpost = OSSignpostID(log: Self.signpostLog)
+        os_signpost(.begin, log: Self.signpostLog, name: "reloadBranches", signpostID: signpost)
+        defer { os_signpost(.end, log: Self.signpostLog, name: "reloadBranches", signpostID: signpost) }
         do {
             branchList = try await branches.list(in: repo)
             currentBranch = try await branches.current(in: repo)

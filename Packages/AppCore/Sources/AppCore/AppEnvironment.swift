@@ -150,8 +150,8 @@ public final class AppEnvironment: ObservableObject {
         }
 
         let activityRef = self.activity
-        let server = HookSocketServer(socketURL: AppDirectories.hooksSocket) { [weak notifier, weak remoteRef] event in
-            Task { @MainActor in
+        let server = HookSocketServer(socketURL: AppDirectories.hooksSocket) { [weak self, weak notifier, weak remoteRef] event in
+            Task { @MainActor [weak self] in
                 guard let id = event.sessionId else { return }
                 if let status = event.resultingStatus {
                     try? repoRef.setStatus(id: id, status)
@@ -163,6 +163,14 @@ public final class AppEnvironment: ObservableObject {
                     kind: event.kind.rawValue,
                     message: event.message
                 ))
+                // PostToolUse fires after every Edit/Write/Bash. Hand it
+                // straight to the matching workspace's pulse so all open
+                // tabs reload immediately — typically before FSEvents has
+                // even propagated the on-disk change.
+                if event.kind == .postToolUse, let session, let self {
+                    let ws = self.gitWorkspace(for: session.worktreePath)
+                    ws.invalidate([.status, .files, .history])
+                }
                 if event.kind == .notification {
                     let isForeground = (registryRef.foregroundSessionId == id)
                     notifier?.sessionNeedsInput(

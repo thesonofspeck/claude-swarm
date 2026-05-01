@@ -22,7 +22,6 @@ struct ChangesTab: View {
     @State private var showBranches = false
     @State private var showStash = false
     @State private var showTags = false
-    @State private var watcher: FileWatcher?
 
     var body: some View {
         Group {
@@ -37,10 +36,20 @@ struct ChangesTab: View {
             if let ws = workspace.value {
                 await ws.reloadAll()
                 await reloadFileDiff(ws)
-                attachWatcher(ws)
             }
         }
-        .onDisappear { watcher?.stop(); watcher = nil }
+        .task(id: session.worktreePath) {
+            // Subscribe to the workspace pulse for the lifetime of the
+            // tab. The pulse fans in FSEvents, hook events, and completed
+            // ops; we only refresh the diff when status changes (file
+            // edits) so other invalidations don't trigger redundant work.
+            guard let ws = workspace.value else { return }
+            for await invalidations in ws.pulse.events() {
+                if invalidations.contains(.status) || invalidations.contains(.files) {
+                    await reloadFileDiff(ws)
+                }
+            }
+        }
         .sheet(isPresented: $showBranches) {
             if let ws = workspace.value {
                 BranchesSheet(workspace: ws)
@@ -98,23 +107,9 @@ struct ChangesTab: View {
             fileDiff = []
             return
         }
-        async let unstaged = (try? await ws.diff.workingTreeDiff(in: ws.repo)) ?? []
-        async let staged = (try? await ws.diff.stagedDiff(in: ws.repo)) ?? []
-        let (u, s) = await (unstaged, staged)
-        let merged = u + s
-        fileDiff = merged.filter { $0.newPath == selection || $0.oldPath == selection }
-    }
-
-    private func attachWatcher(_ ws: GitWorkspace) {
-        watcher?.stop()
-        let w = FileWatcher(url: ws.repo) {
-            Task { @MainActor in
-                await ws.reloadStatus()
-                await reloadFileDiff(ws)
-            }
-        }
-        w.start()
-        watcher = w
+        async let unstaged = ws.diffForFile(selection, staged: false)
+        async let staged = ws.diffForFile(selection, staged: true)
+        fileDiff = await unstaged + staged
     }
 
     private func runCommit(_ ws: GitWorkspace) async {

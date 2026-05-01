@@ -5,6 +5,7 @@ public struct HookEvent: Codable, Equatable, Sendable {
         case notification = "Notification"
         case stop = "Stop"
         case sessionStart = "SessionStart"
+        case postToolUse = "PostToolUse"
         case other
     }
 

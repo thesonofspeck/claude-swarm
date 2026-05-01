@@ -15,7 +15,6 @@ struct FilesTab: View {
     @State private var fileExtension: String = ""
     @State private var loadingFile = false
     @State private var error: String?
-    @State private var watcher: FileWatcher?
     @State private var quickLookURL: URL?
 
     private var isSwift: Bool { fileExtension == "swift" }
@@ -34,9 +33,15 @@ struct FilesTab: View {
         }
         .task(id: session.id) {
             await loadTree()
-            startWatching()
         }
-        .onDisappear { watcher?.stop(); watcher = nil }
+        .task(id: session.id) {
+            let ws = env.gitWorkspace(for: session.worktreePath)
+            for await invalidations in ws.pulse.events() {
+                if invalidations.contains(.files) || invalidations.contains(.status) {
+                    await loadTree()
+                }
+            }
+        }
         .background(QuickLookPreview(url: $quickLookURL))
         .focusable()
         .onKeyPress(.space) {
@@ -46,16 +51,6 @@ struct FilesTab: View {
             }
             return .ignored
         }
-    }
-
-    private func startWatching() {
-        watcher?.stop()
-        let url = URL(fileURLWithPath: session.worktreePath)
-        let w = FileWatcher(url: url) {
-            Task { @MainActor in await loadTree() }
-        }
-        w.start()
-        watcher = w
     }
 
     private var tree: some View {
