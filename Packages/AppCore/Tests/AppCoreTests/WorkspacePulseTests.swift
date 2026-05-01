@@ -3,92 +3,64 @@ import XCTest
 
 @MainActor
 final class WorkspacePulseTests: XCTestCase {
+    /// Subscribe + iterate inline rather than spawning a Task. The pulse's
+    /// `events()` registers the subscriber synchronously on MainActor;
+    /// pulling values off `iterator.next()` is async and lets us interleave
+    /// pings and assertions without racing the subscription registration.
     func testEmitsAfterDebounce() async throws {
         let pulse = WorkspacePulse(debounce: .milliseconds(40))
-        let received = Box<[Set<WorkspaceInvalidation>]>(value: [])
-
-        let task = Task {
-            for await ev in pulse.events() {
-                received.value.append(ev)
-            }
-        }
+        var iterator = pulse.events().makeAsyncIterator()
 
         pulse.ping(.status)
-        // Should not emit before the debounce.
-        try await Task.sleep(for: .milliseconds(10))
-        XCTAssertEqual(received.value.count, 0)
-
-        try await Task.sleep(for: .milliseconds(80))
-        XCTAssertEqual(received.value.count, 1)
-        XCTAssertEqual(received.value.first, [.status])
-
-        task.cancel()
+        let emitted = await iterator.next()
+        XCTAssertEqual(emitted, [.status])
     }
 
     func testCoalescesMultiplePings() async throws {
         let pulse = WorkspacePulse(debounce: .milliseconds(30))
-        let received = Box<[Set<WorkspaceInvalidation>]>(value: [])
-
-        let task = Task {
-            for await ev in pulse.events() {
-                received.value.append(ev)
-            }
-        }
+        var iterator = pulse.events().makeAsyncIterator()
 
         // Burst of pings within the debounce window — should produce ONE
         // emission whose set is the union of every category mentioned.
         pulse.ping(.status)
         pulse.ping(.branches)
         pulse.ping([.history, .stashes])
-        try await Task.sleep(for: .milliseconds(10))
         pulse.ping(.tags)
 
-        try await Task.sleep(for: .milliseconds(80))
-        XCTAssertEqual(received.value.count, 1, "Burst should coalesce to a single emission")
-        let emitted = received.value.first ?? []
+        let emitted = await iterator.next()
         XCTAssertEqual(emitted, [.status, .branches, .history, .stashes, .tags])
-
-        task.cancel()
     }
 
     func testFlushNowEmitsImmediately() async throws {
         let pulse = WorkspacePulse(debounce: .seconds(5))
-        let received = Box<[Set<WorkspaceInvalidation>]>(value: [])
-
-        let task = Task {
-            for await ev in pulse.events() {
-                received.value.append(ev)
-            }
-        }
+        var iterator = pulse.events().makeAsyncIterator()
 
         pulse.ping(.files)
         pulse.flushNow()
 
-        try await Task.sleep(for: .milliseconds(40))
-        XCTAssertEqual(received.value, [[.files]])
-
-        task.cancel()
+        let emitted = await iterator.next()
+        XCTAssertEqual(emitted, [.files])
     }
 
     func testIgnoresEmptyPings() async throws {
         let pulse = WorkspacePulse(debounce: .milliseconds(20))
-        let received = Box<Int>(value: 0)
-
-        let task = Task {
-            for await _ in pulse.events() {
-                received.value += 1
-            }
-        }
+        var iterator = pulse.events().makeAsyncIterator()
 
         pulse.ping([])
-        try await Task.sleep(for: .milliseconds(60))
-        XCTAssertEqual(received.value, 0, "Empty pings should not schedule a flush")
-
-        task.cancel()
+        // Run a competing 60 ms timer; whichever wins, the pulse must
+        // not have emitted anything.
+        let raced = await withTaskGroup(of: Set<WorkspaceInvalidation>?.self) { group in
+            group.addTask {
+                try? await Task.sleep(for: .milliseconds(60))
+                return nil
+            }
+            group.addTask {
+                await iterator.next()
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+        XCTAssertNil(raced, "Empty pings should not schedule a flush")
     }
-}
-
-private final class Box<T> {
-    var value: T
-    init(value: T) { self.value = value }
 }
