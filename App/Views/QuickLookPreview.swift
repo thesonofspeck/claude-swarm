@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import QuickLook
+import Quartz
 
 /// Minimal QuickLook bridge — shows the panel for a single URL when set,
 /// hides it when nil. Use as a `.background` view on a tab.

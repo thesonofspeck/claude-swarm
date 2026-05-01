@@ -17,6 +17,12 @@ public struct LibraryView: Equatable, Sendable {
     public var rows: [Row]
     public var teamManifest: LibraryManifest?
     public var teamError: String?
+
+    public init(rows: [Row], teamManifest: LibraryManifest?, teamError: String?) {
+        self.rows = rows
+        self.teamManifest = teamManifest
+        self.teamError = teamError
+    }
 }
 
 public actor LibraryStore {
