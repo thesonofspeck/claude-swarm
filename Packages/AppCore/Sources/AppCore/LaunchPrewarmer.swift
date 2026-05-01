@@ -54,12 +54,13 @@ public enum LaunchPrewarmer {
 
     /// Eagerly build the GitWorkspace for the most-recent session and run
     /// `reloadAll()` so opening its tabs feels instant.
+    @MainActor
     public static func warmMostRecentWorkspace(
         sessionId: String,
         in env: AppEnvironment
     ) async {
         guard let session = try? env.sessionsRepo.find(id: sessionId) else { return }
-        let ws = await MainActor.run { env.gitWorkspace(for: session.worktreePath) }
+        let ws = env.gitWorkspace(for: session.worktreePath)
         await ws.reloadAll()
     }
 

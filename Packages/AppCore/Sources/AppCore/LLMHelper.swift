@@ -1,5 +1,6 @@
 import Foundation
 import AgentBootstrap
+import PersistenceKit
 
 /// Drafts UI text from sparse hints by shelling out to the Claude Code
 /// CLI in non-interactive mode (`claude -p`). This sidesteps API tokens

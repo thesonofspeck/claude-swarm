@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-public struct ProjectRepository {
+public struct ProjectRepository: Sendable {
     public let db: Database
     public init(db: Database) { self.db = db }
 
@@ -27,7 +27,7 @@ public struct ProjectRepository {
     }
 }
 
-public struct SessionRepository {
+public struct SessionRepository: Sendable {
     public let db: Database
     public init(db: Database) { self.db = db }
 

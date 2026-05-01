@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-public final class Database {
+public final class Database: @unchecked Sendable {
     public let queue: DatabaseQueue
 
     public init(url: URL) throws {

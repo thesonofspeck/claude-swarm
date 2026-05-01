@@ -143,9 +143,11 @@ public final class AppEnvironment: ObservableObject {
         backgroundTasks.append(drainTask)
 
         let janitor = WorktreeJanitor(projects: projects, sessions: sessionsRepo)
+        let projectsForBg = self.projects
+        let sessionsForBg = self.sessionsRepo
         Task.detached {
             _ = await janitor.reconcile()
-            let indexer = SpotlightIndexer(projects: projects, sessions: sessionsRepo)
+            let indexer = SpotlightIndexer(projects: projectsForBg, sessions: sessionsForBg)
             await indexer.reindexAll()
         }
 
@@ -156,10 +158,13 @@ public final class AppEnvironment: ObservableObject {
         Task.detached { [weak self] in
             _ = await LaunchPrewarmer.warmTools(settings: snapshotSettings)
             await MainActor.run { LaunchPrewarmer.warmKeychain(kcRef) }
-            if let mru = snapshotSettings.lastSelectedSessionId,
-               let envRef = await MainActor.run(body: { self }) {
-                await LaunchPrewarmer.warmMostRecentWorkspace(sessionId: mru, in: envRef)
-            }
+            guard let mru = snapshotSettings.lastSelectedSessionId else { return }
+            // Hop back to MainActor; the prewarmer needs env.sessionsRepo
+            // and env.gitWorkspace which are MainActor-isolated.
+            await Task { @MainActor in
+                guard let self else { return }
+                await LaunchPrewarmer.warmMostRecentWorkspace(sessionId: mru, in: self)
+            }.value
         }
 
         let activityRef = self.activity

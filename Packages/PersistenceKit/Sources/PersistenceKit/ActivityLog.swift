@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-public struct ActivityEvent: Codable, Identifiable, Equatable, FetchableRecord, MutablePersistableRecord {
+public struct ActivityEvent: Codable, Identifiable, Equatable, Sendable, FetchableRecord, MutablePersistableRecord {
     public var id: String
     public var timestamp: Date
     public var sessionId: String?
@@ -28,7 +28,7 @@ public struct ActivityEvent: Codable, Identifiable, Equatable, FetchableRecord, 
     }
 }
 
-public struct ActivityLog {
+public struct ActivityLog: Sendable {
     public let db: Database
     public init(db: Database) { self.db = db }
 

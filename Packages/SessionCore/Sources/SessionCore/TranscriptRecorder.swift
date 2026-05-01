@@ -1,6 +1,6 @@
 import Foundation
 
-public final class TranscriptRecorder {
+public final class TranscriptRecorder: @unchecked Sendable {
     private let url: URL
     private let maxBytes: UInt64
     private var handle: FileHandle?
