@@ -55,7 +55,7 @@ public struct BranchService: Sendable {
             // Remote HEAD pointer is noise.
             if isRemote && short.hasSuffix("/HEAD") { continue }
 
-            let (ahead, behind) = parseTrack(track)
+            let (ahead, behind) = Self.parseTrack(track)
             let date = iso.date(from: dateStr) ?? isoFractional.date(from: dateStr)
 
             out.append(BranchRef(
