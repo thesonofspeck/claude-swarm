@@ -6,6 +6,7 @@ import AtomPalette
 /// Atom One Light + Dark Splash themes. Hex values come from the shared
 /// AtomPalette package.
 public enum AtomSplashTheme {
+    @MainActor
     public static func current() -> Splash.Theme {
         let isDark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .vibrantDark]) != nil
         return isDark ? dark() : light()

@@ -1,4 +1,5 @@
 import Foundation
+import os
 import ToolDetector
 
 public actor BrewInstaller {
@@ -43,12 +44,15 @@ public actor BrewInstaller {
             let pipe = Pipe()
             process.standardOutput = pipe
             process.standardError = pipe
-            var combined = ""
+            // Two @Sendable handlers share this buffer; a locked Sendable
+            // container is the simplest way to keep Swift 6 happy without
+            // restructuring the whole pipe/handler dance.
+            let combined = OSAllocatedUnfairLock(initialState: "")
             pipe.fileHandleForReading.readabilityHandler = { handle in
                 let data = handle.availableData
                 if data.isEmpty { return }
                 if let line = String(data: data, encoding: .utf8) {
-                    combined += line
+                    combined.withLock { $0 += line }
                     output?(line)
                 }
             }
@@ -57,9 +61,10 @@ public actor BrewInstaller {
                 if proc.terminationStatus == 0 {
                     cont.resume()
                 } else {
+                    let log = combined.withLock { $0 }
                     cont.resume(throwing: InstallError.nonZeroExit(
                         code: proc.terminationStatus,
-                        log: combined
+                        log: log
                     ))
                 }
             }
