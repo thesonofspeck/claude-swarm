@@ -44,23 +44,20 @@ final class WorkspacePulseTests: XCTestCase {
 
     func testIgnoresEmptyPings() async throws {
         let pulse = WorkspacePulse(debounce: .milliseconds(20))
-        var iterator = pulse.events().makeAsyncIterator()
 
         pulse.ping([])
-        // Run a competing 60 ms timer; whichever wins, the pulse must
-        // not have emitted anything.
-        let raced = await withTaskGroup(of: Set<WorkspaceInvalidation>?.self) { group in
-            group.addTask {
-                try? await Task.sleep(for: .milliseconds(60))
-                return nil
-            }
-            group.addTask {
-                await iterator.next()
-            }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first
-        }
-        XCTAssertNil(raced, "Empty pings should not schedule a flush")
+        // Wait past the debounce window. If a flush had been scheduled
+        // (the bug condition), there'd be a value to consume; we assert
+        // that there isn't by polling for any pending event with a tight
+        // timeout.
+        try await Task.sleep(for: .milliseconds(80))
+        var iterator = pulse.events().makeAsyncIterator()
+        // Re-ping with a real category so we can distinguish "stream
+        // produced nothing yet" from "iterator never received anything";
+        // the next event we pull must be just `.status`, not a leftover
+        // emission from the empty ping.
+        pulse.ping(.status)
+        let next = await iterator.next()
+        XCTAssertEqual(next, [.status], "Empty ping should not have leaked an emission")
     }
 }

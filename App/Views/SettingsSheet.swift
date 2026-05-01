@@ -252,9 +252,11 @@ struct SettingsSheet: View {
 
     private var aiTab: some View {
         Form {
-            Section("Drafting via Claude Code") {
+            Section {
                 Toggle("Enable ✨ buttons", isOn: $llmEnabled)
                 Stepper("Timeout: \(llmTimeout)s", value: $llmTimeout, in: 15...300, step: 15)
+            } header: {
+                Text("Drafting via Claude Code")
             } footer: {
                 Text("Powers the ✨ buttons in New Session, New Wrike Task, and PR Create. Drafts run via `claude -p` (no API key needed) using the `wrike-task-drafter` and `pr-drafter` skills bundled with each project's `.claude/skills/`. Edit those skills to change the format the team uses.")
                     .font(Type.caption).foregroundStyle(Palette.fgMuted)

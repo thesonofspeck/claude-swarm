@@ -341,7 +341,7 @@ struct ProjectDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         guard let provider = info.itemProviders(for: [.fileURL]).first else { return false }
-        provider.loadObject(ofClass: URL.self) { url, _ in
+        _ = provider.loadObject(ofClass: URL.self) { url, _ in
             guard let url else { return }
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { return }
