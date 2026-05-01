@@ -319,7 +319,7 @@ public extension Notification.Name {
     static let swarmRemoteApproval = Notification.Name("ClaudeSwarm.RemoteApproval")
 }
 
-public struct AppSettings: Codable, Equatable {
+public struct AppSettings: Codable, Equatable, Sendable {
     public var claudeExecutable: String
     public var ghExecutable: String
     public var gitExecutable: String
