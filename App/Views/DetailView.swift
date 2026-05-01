@@ -7,12 +7,13 @@ import TerminalUI
 import SessionCore
 
 enum DetailTab: String, CaseIterable, Identifiable {
-    case terminal, files, diff, history, pr, tasks, memory, agents, library, policy, claudeMd, transcript
+    case terminal, changes, files, diff, history, pr, tasks, memory, agents, library, policy, claudeMd, transcript
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .terminal: return "Terminal"
+        case .changes: return "Changes"
         case .files: return "Files"
         case .diff: return "Diff"
         case .history: return "History"
@@ -30,6 +31,7 @@ enum DetailTab: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .terminal: return "terminal"
+        case .changes: return "checklist.unchecked"
         case .files: return "folder"
         case .diff: return "arrow.left.arrow.right"
         case .history: return "clock.arrow.circlepath"
@@ -95,6 +97,7 @@ struct DetailView: View {
         if let session {
             switch tab {
             case .terminal: TerminalTab(session: session)
+            case .changes: ChangesTab(session: session)
             case .files: FilesTab(session: session)
             case .diff: DiffTab(session: session)
             case .history: HistoryTab(session: session)
@@ -191,6 +194,10 @@ struct HistoryTab: View {
     @State private var selection: String?
     @State private var commitDiff: [DiffFile] = []
 
+    private var workspace: GitWorkspace {
+        env.gitWorkspace(for: session.worktreePath)
+    }
+
     var body: some View {
         HSplitView {
             List(commits, selection: $selection) { c in
@@ -211,6 +218,7 @@ struct HistoryTab: View {
                     }
                 }
                 .tag(Optional(c.id))
+                .contextMenu { contextMenu(for: c) }
             }
             .frame(minWidth: 320)
             .scrollContentBackground(.hidden)
@@ -230,4 +238,51 @@ struct HistoryTab: View {
             }
         }
     }
+
+    @ViewBuilder
+    private func contextMenu(for commit: CommitSummary) -> some View {
+        Button("Copy SHA") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(commit.id, forType: .string)
+        }
+        Divider()
+        Button("Cherry-pick onto current branch") {
+            Task { await workspace.cherryPick(commit.id) }
+        }
+        Button("Revert", role: .destructive) {
+            Task { await workspace.revert(commit.id) }
+        }
+        Divider()
+        Menu("Reset current branch to here") {
+            Button("Soft (keep index + worktree)") {
+                Task { await reset(to: commit.id, mode: .soft) }
+            }
+            Button("Mixed (keep worktree)") {
+                Task { await reset(to: commit.id, mode: .mixed) }
+            }
+            Button("Hard — discard everything", role: .destructive) {
+                Task { await reset(to: commit.id, mode: .hard) }
+            }
+        }
+        Button("Tag this commit…") {
+            NotificationCenter.default.post(
+                name: .swarmCreateTag,
+                object: nil,
+                userInfo: ["sha": commit.id]
+            )
+        }
+    }
+
+    private func reset(to sha: String, mode: CommitService.ResetMode) async {
+        do {
+            try await workspace.commits.reset(to: sha, mode: mode, in: workspace.repo)
+            await workspace.reloadAll()
+        } catch {
+            // Surface through the workspace's error path next reload.
+        }
+    }
+}
+
+extension Notification.Name {
+    static let swarmCreateTag = Notification.Name("ClaudeSwarm.CreateTag")
 }

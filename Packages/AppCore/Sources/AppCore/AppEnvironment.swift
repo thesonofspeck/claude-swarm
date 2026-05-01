@@ -221,6 +221,19 @@ public final class AppEnvironment: ObservableObject {
         )
     }
 
+    private var gitWorkspaces: [String: GitWorkspace] = [:]
+
+    /// Returns a cached `GitWorkspace` for the given worktree path. The
+    /// cache is keyed by canonical path so two views looking at the same
+    /// repo share status, branch list, and operation telemetry.
+    public func gitWorkspace(for repoPath: String) -> GitWorkspace {
+        let key = (repoPath as NSString).standardizingPath
+        if let existing = gitWorkspaces[key] { return existing }
+        let ws = GitWorkspace(repo: URL(fileURLWithPath: key))
+        gitWorkspaces[key] = ws
+        return ws
+    }
+
     public func saveSettings() {
         do {
             try settings.save(to: settingsURL)
