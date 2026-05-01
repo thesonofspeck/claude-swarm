@@ -89,7 +89,20 @@ public actor MemoryStore {
         self.projectRoot = projectRoot
         self.projectId = projectId
         self.globalRoot = globalRoot
-        try ensureDirectories()
+        // Inline directory creation — the actor's nonisolated init can't
+        // call isolated members under Swift 6 strict concurrency.
+        let fm = FileManager.default
+        try fm.createDirectory(at: globalRoot, withIntermediateDirectories: true)
+        if let projectRoot {
+            try fm.createDirectory(
+                at: projectRoot.appendingPathComponent(".claude/memory/project", isDirectory: true),
+                withIntermediateDirectories: true
+            )
+            try fm.createDirectory(
+                at: projectRoot.appendingPathComponent(".claude/memory/session", isDirectory: true),
+                withIntermediateDirectories: true
+            )
+        }
     }
 
     // MARK: - Public API
@@ -147,15 +160,6 @@ public actor MemoryStore {
     }
 
     // MARK: - Path helpers
-
-    private func ensureDirectories() throws {
-        let fm = FileManager.default
-        try fm.createDirectory(at: globalRoot, withIntermediateDirectories: true)
-        if let projectRoot {
-            try fm.createDirectory(at: projectMemoryRoot(projectRoot), withIntermediateDirectories: true)
-            try fm.createDirectory(at: sessionMemoryRoot(projectRoot), withIntermediateDirectories: true)
-        }
-    }
 
     private func projectMemoryRoot(_ projectRoot: URL) -> URL {
         projectRoot.appendingPathComponent(".claude/memory/project", isDirectory: true)
@@ -373,7 +377,10 @@ public actor MemoryStore {
         return cleaned.isEmpty ? UUID().uuidString : cleaned
     }
 
-    private static let iso8601: ISO8601DateFormatter = {
+    // ISO8601DateFormatter isn't Sendable, but its `string(from:)` and
+    // `date(from:)` are documented thread-safe — `nonisolated(unsafe)`
+    // tells the Swift 6 compiler we know what we're doing.
+    nonisolated(unsafe) private static let iso8601: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
