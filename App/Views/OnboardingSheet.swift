@@ -395,7 +395,7 @@ struct ToolsStep: View {
                 installLog[tool.id, default: ""].append("\n\(error.localizedDescription)\n")
             }
         }
-        await MainActor.run { installing.remove(tool.id) }
+        await MainActor.run { _ = installing.remove(tool.id) }
     }
 
     private func chooseManual(for tool: Tool) {

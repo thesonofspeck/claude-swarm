@@ -283,8 +283,19 @@ struct PRTab: View {
         guard !body.isEmpty else { return }
         await MainActor.run { _ = posting.insert(comment.id) }
         do {
-            let owner = project.githubOwner ?? (try await env.github.currentRepo(in: URL(fileURLWithPath: session.worktreePath)).owner)
-            let repo = project.githubRepo ?? (try await env.github.currentRepo(in: URL(fileURLWithPath: session.worktreePath)).repo)
+            // ?? uses an autoclosure that can't carry try/await; resolve
+            // the remote once and fall back to its owner/repo if either
+            // project field is missing.
+            let resolved: (owner: String, repo: String)
+            if project.githubOwner != nil && project.githubRepo != nil {
+                resolved = (project.githubOwner!, project.githubRepo!)
+            } else {
+                let detected = try await env.github.currentRepo(in: URL(fileURLWithPath: session.worktreePath))
+                resolved = (project.githubOwner ?? detected.owner,
+                            project.githubRepo ?? detected.repo)
+            }
+            let owner = resolved.owner
+            let repo = resolved.repo
             try await env.github.replyToReviewComment(
                 owner: owner, repo: repo, number: pr.number,
                 commentId: comment.id, body: body

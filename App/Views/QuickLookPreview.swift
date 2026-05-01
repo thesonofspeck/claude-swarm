@@ -30,7 +30,8 @@ private struct QLPanelBridge: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    final class Coordinator: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+    @MainActor
+    final class Coordinator: NSObject, @preconcurrency QLPreviewPanelDataSource, @preconcurrency QLPreviewPanelDelegate {
         var url: URL?
         private weak var panel: QLPreviewPanel?
 
