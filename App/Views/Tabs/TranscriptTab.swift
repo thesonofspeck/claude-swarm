@@ -80,18 +80,24 @@ struct TranscriptTab: View {
 
     private func load() async {
         let url = URL(fileURLWithPath: session.transcriptPath)
-        do {
-            let raw = try Data(contentsOf: url)
-            byteCount = raw.count
-            let stripped = ANSIStripper.strip(String(decoding: raw, as: UTF8.self))
-            // Cap displayed text to last 1 MiB so very long sessions render.
-            let max = 1_000_000
-            content = stripped.count > max ? String(stripped.suffix(max)) : stripped
-            error = nil
-        } catch {
-            self.error = "\(error.localizedDescription)"
-            content = ""
-        }
+        // Read + cap + ANSI-strip on a detached Task so multi-MB
+        // transcripts don't stall the main actor.
+        let result = await Task.detached { () -> (String, Int, String?) in
+            do {
+                let raw = try Data(contentsOf: url)
+                // Cap to the last 1 MiB BEFORE running the ANSI-strip
+                // regex so the regex doesn't have to walk megabytes.
+                let max = 1_000_000
+                let truncated: Data = raw.count > max ? raw.suffix(max) : raw
+                let text = String(decoding: truncated, as: UTF8.self)
+                return (ANSIStripper.strip(text), raw.count, nil)
+            } catch {
+                return ("", 0, error.localizedDescription)
+            }
+        }.value
+        content = result.0
+        byteCount = result.1
+        error = result.2
     }
 
     private func byteSize(_ n: Int) -> String {
