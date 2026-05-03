@@ -24,6 +24,7 @@ public final class AppEnvironment: ObservableObject {
     public let github: GitHubClient
     public let sessionManager: SessionManager
     public let welcomeFeed: WelcomeFeed
+    public let inboxFeed: InboxFeed
     public let notifier: Notifier
     public let installer: Installer
     public let diff: DiffService
@@ -106,6 +107,12 @@ public final class AppEnvironment: ObservableObject {
             taskCache: taskCache,
             prCache: prCache,
             wrike: wrike,
+            github: github
+        )
+        self.inboxFeed = InboxFeed(
+            projects: projects,
+            sessionsRepo: sessionsRepo,
+            activity: activity,
             github: github
         )
         // Capture by reference so the helper picks up runtime changes

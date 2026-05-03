@@ -8,6 +8,7 @@ struct RootSplitView: View {
     @State private var inspectorVisible = true
     @State private var showOnboarding = false
     @State private var showCommandPalette = false
+    @State private var showInbox = false
     @State private var newSessionProjectId: String?
     @State private var didRestoreSelection = false
 
@@ -51,6 +52,12 @@ struct RootSplitView: View {
                     showCommandPalette = true
                 }
             }
+            ToolbarItem(placement: .principal) {
+                IconButton(systemImage: "tray.full", help: "Inbox — ⌘⇧I") {
+                    showInbox = true
+                }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+            }
             ToolbarItem(placement: .primaryAction) {
                 IconButton(
                     systemImage: inspectorVisible ? "sidebar.right" : "sidebar.squares.right",
@@ -83,6 +90,20 @@ struct RootSplitView: View {
             CommandPalette(selectedSession: $selectedSession)
                 .environmentObject(env)
                 .environmentObject(env.projectList)
+        }
+        .sheet(isPresented: $showInbox) {
+            NavigationStack {
+                InboxView(feed: env.inboxFeed, selectedSession: $selectedSession)
+                    .frame(minWidth: 640, minHeight: 540)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showInbox = false }
+                                .keyboardShortcut(.cancelAction)
+                                .keyboardShortcut(.defaultAction)
+                        }
+                    }
+            }
+            .environmentObject(env)
         }
         .onAppear {
             if !env.settings.hasCompletedOnboarding {
