@@ -71,4 +71,75 @@ public struct SessionRepository: Sendable {
     public func delete(id: String) throws {
         _ = try db.queue.write { conn in try Session.deleteOne(conn, key: id) }
     }
+
+    /// Most recently updated sessions across every project. The Welcome
+    /// view's "Pick up where you left off" rail uses this.
+    public func recent(limit: Int = 12) throws -> [Session] {
+        try db.queue.read { conn in
+            try Session.order(Column("updatedAt").desc).limit(limit).fetchAll(conn)
+        }
+    }
+}
+
+public struct TaskCacheRepository: Sendable {
+    public let db: Database
+    public init(db: Database) { self.db = db }
+
+    public func upsert(_ tasks: [CachedTask], for projectId: String) throws {
+        try db.queue.write { conn in
+            // Replace the project's slice atomically so deleted tasks vanish.
+            try CachedTask.filter(Column("projectId") == projectId).deleteAll(conn)
+            for task in tasks {
+                var t = task
+                try t.save(conn)
+            }
+        }
+    }
+
+    public func all() throws -> [CachedTask] {
+        try db.queue.read { conn in
+            try CachedTask.order(Column("fetchedAt").desc).fetchAll(conn)
+        }
+    }
+
+    public func forProject(_ projectId: String) throws -> [CachedTask] {
+        try db.queue.read { conn in
+            try CachedTask
+                .filter(Column("projectId") == projectId)
+                .order(Column("fetchedAt").desc)
+                .fetchAll(conn)
+        }
+    }
+}
+
+public struct PRCacheRepository: Sendable {
+    public let db: Database
+    public init(db: Database) { self.db = db }
+
+    public func upsert(_ prs: [CachedPR], owner: String, repo: String) throws {
+        try db.queue.write { conn in
+            try CachedPR
+                .filter(Column("owner") == owner && Column("repo") == repo)
+                .deleteAll(conn)
+            for pr in prs {
+                var p = pr
+                try p.save(conn)
+            }
+        }
+    }
+
+    public func all() throws -> [CachedPR] {
+        try db.queue.read { conn in
+            try CachedPR.order(Column("fetchedAt").desc).fetchAll(conn)
+        }
+    }
+
+    public func forRepo(owner: String, repo: String) throws -> [CachedPR] {
+        try db.queue.read { conn in
+            try CachedPR
+                .filter(Column("owner") == owner && Column("repo") == repo)
+                .order(Column("number").desc)
+                .fetchAll(conn)
+        }
+    }
 }

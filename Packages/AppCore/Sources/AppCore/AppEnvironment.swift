@@ -18,9 +18,12 @@ public final class AppEnvironment: ObservableObject {
     public let database: Database
     public let projects: ProjectRepository
     public let sessionsRepo: SessionRepository
+    public let taskCache: TaskCacheRepository
+    public let prCache: PRCacheRepository
     public let wrike: WrikeClient
     public let github: GitHubClient
     public let sessionManager: SessionManager
+    public let welcomeFeed: WelcomeFeed
     public let notifier: Notifier
     public let installer: Installer
     public let diff: DiffService
@@ -54,6 +57,8 @@ public final class AppEnvironment: ObservableObject {
         self.database = db
         self.projects = ProjectRepository(db: db)
         self.sessionsRepo = SessionRepository(db: db)
+        self.taskCache = TaskCacheRepository(db: db)
+        self.prCache = PRCacheRepository(db: db)
         let wrikeClient = WrikeClient(keychain: keychain)
         self.wrike = wrikeClient
         self.wrikeBridge = WrikeBridge(client: wrikeClient)
@@ -95,6 +100,14 @@ public final class AppEnvironment: ObservableObject {
         let libSource = TeamLibrarySource(cacheRoot: libraryCache)
         self.library = LibraryStore(teamSource: libSource)
         self.activity = ActivityLog(db: db)
+        self.welcomeFeed = WelcomeFeed(
+            projects: projects,
+            sessionsRepo: sessionsRepo,
+            taskCache: taskCache,
+            prCache: prCache,
+            wrike: wrike,
+            github: github
+        )
         // Capture by reference so the helper picks up runtime changes
         // (the user can update the claude path at any time).
         self.llm = LLMHelper(
