@@ -71,5 +71,17 @@ public enum Schema {
             }
             try db.create(index: "idx_activity_timestamp", on: "activity", columns: ["timestamp"])
         }
+
+        // v3 — back the hot-path lookups with proper indexes.
+        // Sidebar polling, Welcome rails, and Inbox refresh all sort
+        // sessions by updatedAt and look up cached tasks/PRs by
+        // project / repo. Without these every read was a full table
+        // scan on the single connection.
+        migrator.registerMigration("v3_indexes") { db in
+            try db.create(index: "idx_session_projectId", on: "session", columns: ["projectId"])
+            try db.create(index: "idx_session_updatedAt", on: "session", columns: ["updatedAt"])
+            try db.create(index: "idx_task_cache_projectId", on: "task_cache", columns: ["projectId"])
+            try db.create(index: "idx_pr_cache_owner_repo", on: "pr_cache", columns: ["owner", "repo"])
+        }
     }
 }
