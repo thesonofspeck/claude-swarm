@@ -25,6 +25,7 @@ public final class AppEnvironment: ObservableObject {
     public let sessionManager: SessionManager
     public let welcomeFeed: WelcomeFeed
     public let inboxFeed: InboxFeed
+    public let search: SearchService
     public let notifier: Notifier
     public let installer: Installer
     public let diff: DiffService
@@ -114,6 +115,10 @@ public final class AppEnvironment: ObservableObject {
             sessionsRepo: sessionsRepo,
             activity: activity,
             github: github
+        )
+        self.search = SearchService(
+            globalMemoryRoot: AppPaths.globalMemoryRoot,
+            gitExecutable: appSettings.gitExecutable.isEmpty ? "/usr/bin/git" : appSettings.gitExecutable
         )
         // Capture by reference so the helper picks up runtime changes
         // (the user can update the claude path at any time).

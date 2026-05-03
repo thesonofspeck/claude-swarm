@@ -9,6 +9,7 @@ struct RootSplitView: View {
     @State private var showOnboarding = false
     @State private var showCommandPalette = false
     @State private var showInbox = false
+    @State private var showGlobalSearch = false
     @State private var newSessionProjectId: String?
     @State private var didRestoreSelection = false
 
@@ -58,6 +59,12 @@ struct RootSplitView: View {
                 }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
             }
+            ToolbarItem(placement: .principal) {
+                IconButton(systemImage: "magnifyingglass", help: "Search everything — ⌘⇧F") {
+                    showGlobalSearch = true
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+            }
             ToolbarItem(placement: .primaryAction) {
                 IconButton(
                     systemImage: inspectorVisible ? "sidebar.right" : "sidebar.squares.right",
@@ -104,6 +111,10 @@ struct RootSplitView: View {
                     }
             }
             .environmentObject(env)
+        }
+        .sheet(isPresented: $showGlobalSearch) {
+            GlobalSearchSheet(selectedSession: $selectedSession)
+                .environmentObject(env)
         }
         .onAppear {
             if !env.settings.hasCompletedOnboarding {
