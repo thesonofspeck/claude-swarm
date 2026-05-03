@@ -6,6 +6,12 @@ import PairingProtocol
 /// bearer token, then receives `ServerEvent`s and sends `ClientCommand`s.
 /// Pairing flow uses the same socket — a fresh client sends `pair` first,
 /// then upgrades to authenticated traffic.
+///
+/// All mutable state (`connections`, `commandHandler`, `certThumbprint`)
+/// is fenced through `queue`. Public APIs that read state do so via
+/// `queue.sync`; mutations dispatch via `queue.async`. The class is
+/// `@unchecked Sendable` because Network.framework callbacks are
+/// invoked on `queue` and we route everything else through it as well.
 public final class PairingServer: @unchecked Sendable {
     public typealias CommandHandler = @Sendable (ClientCommand, PairRecord) async -> Void
 
@@ -14,14 +20,17 @@ public final class PairingServer: @unchecked Sendable {
     public let macName: String
     public let macId: String
 
-    public private(set) var certThumbprint: String = ""
-
     private let store: PairStore
     private let invites: PairingInviteService
     private let queue = DispatchQueue(label: "com.claudeswarm.pairing.server")
+    // All four below are queue-bound. Reads/writes outside the queue are
+    // a bug.
     private var listener: NWListener?
     private var connections: [ObjectIdentifier: AuthenticatedConnection] = [:]
     private var commandHandler: CommandHandler?
+    private var _certThumbprint: String = ""
+
+    public var certThumbprint: String { queue.sync { _certThumbprint } }
 
     public init(
         store: PairStore,
@@ -40,20 +49,20 @@ public final class PairingServer: @unchecked Sendable {
     }
 
     public func setCommandHandler(_ handler: @escaping CommandHandler) {
-        commandHandler = handler
+        queue.sync { commandHandler = handler }
     }
 
     public func start() throws {
         let identity = try PairingTLS.loadOrGenerate(macId: macId)
-        certThumbprint = identity.thumbprintHex
+        // Stash thumbprint on the queue before the listener fires so any
+        // immediate read sees the populated value.
+        queue.sync { _certThumbprint = identity.thumbprintHex }
 
         let tlsOptions = NWProtocolTLS.Options()
         let secIdentity = sec_identity_create(identity.secIdentity)!
         sec_protocol_options_set_local_identity(
             tlsOptions.securityProtocolOptions, secIdentity
         )
-        // We pin via SHA-256 thumbprint on the iOS side, so don't require a
-        // cert from clients.
         sec_protocol_options_set_peer_authentication_required(
             tlsOptions.securityProtocolOptions, false
         )
@@ -69,10 +78,13 @@ public final class PairingServer: @unchecked Sendable {
             type: "_claudeswarm._tcp"
         )
         listener.newConnectionHandler = { [weak self] conn in
+            // Network.framework dispatches this on `queue` already; no
+            // extra fence needed here, but `accept` writes `connections`
+            // and must run on `queue`.
             self?.accept(conn)
         }
         listener.start(queue: queue)
-        self.listener = listener
+        queue.sync { self.listener = listener }
     }
 
     public func stop() {
@@ -86,24 +98,26 @@ public final class PairingServer: @unchecked Sendable {
 
     deinit { stop() }
 
-    /// Broadcast an event to every authenticated connection. Returns the
-    /// device ids that received it (useful for caller-side telemetry).
     @discardableResult
     public func broadcast(_ event: ServerEvent) -> [String] {
-        let snapshot: [AuthenticatedConnection] = queue.sync {
-            connections.values.filter { $0.record != nil }
+        // Pull the live snapshot AND read each conn's record on `queue`
+        // so we never witness a half-written record from another thread.
+        let snapshot: [(AuthenticatedConnection, PairRecord)] = queue.sync {
+            connections.values.compactMap { conn in
+                conn.recordSnapshot.map { (conn, $0) }
+            }
         }
         var delivered: [String] = []
-        for conn in snapshot {
+        for (conn, record) in snapshot {
             conn.send(.event(event))
-            if let r = conn.record { delivered.append(r.id) }
+            delivered.append(record.id)
         }
         return delivered
     }
 
     public func sendTo(deviceId: String, event: ServerEvent) {
         let matches: [AuthenticatedConnection] = queue.sync {
-            connections.values.filter { $0.record?.id == deviceId }
+            connections.values.filter { $0.recordSnapshot?.id == deviceId }
         }
         for conn in matches {
             conn.send(.event(event))
@@ -111,12 +125,15 @@ public final class PairingServer: @unchecked Sendable {
     }
 
     public func pairedDeviceIds() -> [String] {
-        queue.sync { connections.values.compactMap { $0.record?.id } }
+        queue.sync { connections.values.compactMap { $0.recordSnapshot?.id } }
     }
 
-    // MARK: - Connection lifecycle
+    // MARK: - Connection lifecycle (always called on `queue`)
 
     private func accept(_ raw: NWConnection) {
+        // Snapshot the handler under the queue so the connection can
+        // dispatch even if the host clears it later.
+        let handlerSnapshot = commandHandler
         let conn = AuthenticatedConnection(
             raw: raw,
             queue: queue,
@@ -125,8 +142,11 @@ public final class PairingServer: @unchecked Sendable {
             macName: macName,
             macId: macId,
             onCommand: { [weak self] cmd, record in
+                // Re-resolve under the queue so we always see the latest
+                // handler, not the captured snapshot.
                 guard let self else { return }
-                Task { await self.commandHandler?(cmd, record) }
+                let handler = self.queue.sync { self.commandHandler ?? handlerSnapshot }
+                Task { await handler?(cmd, record) }
             },
             onClose: { [weak self] id in
                 guard let self else { return }
@@ -136,12 +156,17 @@ public final class PairingServer: @unchecked Sendable {
             }
         )
         connections[ObjectIdentifier(conn)] = conn
+        // Only start *after* the dictionary write so onClose can never
+        // fire before the entry exists.
         conn.start()
     }
 }
 
 /// Owns one socket. Manages handshake state, frame send/receive, auth, and
 /// dispatches commands.
+///
+/// All mutable state (`_record`) is fenced through the same queue the
+/// owning server uses; reads through `recordSnapshot` are queue-safe.
 final class AuthenticatedConnection: @unchecked Sendable {
     let raw: NWConnection
     let queue: DispatchQueue
@@ -149,17 +174,25 @@ final class AuthenticatedConnection: @unchecked Sendable {
     let invites: PairingInviteService
     let macName: String
     let macId: String
-    let onCommand: (ClientCommand, PairRecord) -> Void
-    let onClose: (ObjectIdentifier) -> Void
+    let onCommand: @Sendable (ClientCommand, PairRecord) -> Void
+    let onClose: @Sendable (ObjectIdentifier) -> Void
 
-    private(set) var record: PairRecord?
+    /// All `_record` mutations and reads happen on `queue`.
+    private var _record: PairRecord?
+
+    /// Read-only snapshot accessor — must be called inside `queue.sync`
+    /// (the owning server already does so).
+    var recordSnapshot: PairRecord? {
+        dispatchPrecondition(condition: .onQueue(queue))
+        return _record
+    }
 
     init(
         raw: NWConnection, queue: DispatchQueue,
         store: PairStore, invites: PairingInviteService,
         macName: String, macId: String,
-        onCommand: @escaping (ClientCommand, PairRecord) -> Void,
-        onClose: @escaping (ObjectIdentifier) -> Void
+        onCommand: @escaping @Sendable (ClientCommand, PairRecord) -> Void,
+        onClose: @escaping @Sendable (ObjectIdentifier) -> Void
     ) {
         self.raw = raw
         self.queue = queue
@@ -199,8 +232,9 @@ final class AuthenticatedConnection: @unchecked Sendable {
         raw.receiveMessage { [weak self] data, _, _, error in
             guard let self else { return }
             if let error {
-                self.onClose(ObjectIdentifier(self))
                 _ = error
+                self.onClose(ObjectIdentifier(self))
+                // Do NOT re-arm — the socket is dead.
                 return
             }
             if let data, let message = try? PairCodec.decodeMessage(data) {
@@ -217,7 +251,9 @@ final class AuthenticatedConnection: @unchecked Sendable {
         case .hello(let req):
             Task { await self.handleHello(req) }
         case .command(let cmd):
-            guard let record else {
+            // `_record` is queue-bound; this callback runs on `queue`.
+            dispatchPrecondition(condition: .onQueue(queue))
+            guard let record = _record else {
                 send(.helloError("Not authenticated"))
                 return
             }
@@ -242,7 +278,7 @@ final class AuthenticatedConnection: @unchecked Sendable {
         )
         do {
             try await store.register(record)
-            self.record = record
+            queue.async { self._record = record }
             send(.paired(PairResult(bearerToken: token, macId: macId, macName: macName)))
         } catch {
             send(.pairError("Could not save pair record: \(error.localizedDescription)"))
@@ -258,7 +294,7 @@ final class AuthenticatedConnection: @unchecked Sendable {
         record.lastSeenAt = Date()
         if let token = req.apnsToken { record.apnsToken = token }
         try? await store.save(record)
-        self.record = record
+        queue.async { self._record = record }
         send(.helloOk(AuthResult(macName: macName, serverTime: Date())))
     }
 

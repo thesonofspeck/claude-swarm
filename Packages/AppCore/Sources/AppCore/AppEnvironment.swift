@@ -178,29 +178,35 @@ public final class AppEnvironment: ObservableObject {
         let janitor = self.worktreeJanitor
         let projectsForBg = self.projects
         let sessionsForBg = self.sessionsRepo
-        Task.detached {
+        // Tracked in backgroundTasks so shutdown() can cancel both
+        // reconcile and the Spotlight reindex. Reindex is debounced 5s
+        // so it doesn't compete with launch-critical work.
+        backgroundTasks.append(Task.detached {
             _ = await janitor.reconcile()
+            if Task.isCancelled { return }
+            try? await Task.sleep(for: .seconds(5))
+            if Task.isCancelled { return }
             let indexer = SpotlightIndexer(projects: projectsForBg, sessions: sessionsForBg)
             await indexer.reindexAll()
-        }
+        })
 
         // Launch-time prewarms — paths, token unlock, and the most recent
         // session's git workspace. All best-effort; nothing fails the app.
         let kcRef = self.keychain
         let snapshotSettings = self.settings
-        // Path resolution + claude --version happens off-main; no self
-        // capture so the Sendable closure stays clean under Swift 6.
-        Task.detached {
+        backgroundTasks.append(Task.detached {
             _ = await LaunchPrewarmer.warmTools(settings: snapshotSettings)
+            if Task.isCancelled { return }
             await MainActor.run { LaunchPrewarmer.warmKeychain(kcRef) }
-        }
+        })
         // Workspace prewarm needs MainActor-isolated env state; run as a
         // MainActor Task instead of bouncing through a detached one.
         if let mru = snapshotSettings.lastSelectedSessionId {
-            Task { @MainActor [weak self] in
+            backgroundTasks.append(Task { @MainActor [weak self] in
                 guard let self else { return }
+                if Task.isCancelled { return }
                 await LaunchPrewarmer.warmMostRecentWorkspace(sessionId: mru, in: self)
-            }
+            })
         }
 
         let activityRef = self.activity

@@ -104,7 +104,10 @@ public final class HookSocketServer {
             let n = read(clientFD, &chunk, chunk.count)
             if n <= 0 { break }
             buffer.append(chunk, count: n)
-            if buffer.contains(0x0a) { break }
+            // Scan only the new chunk — `buffer.contains` would re-scan
+            // the entire accumulated payload on every read (O(N²) for
+            // multi-KB hook bodies).
+            if (0..<n).contains(where: { chunk[$0] == 0x0a }) { break }
         }
         guard !buffer.isEmpty else { return }
         let decoder = JSONDecoder()

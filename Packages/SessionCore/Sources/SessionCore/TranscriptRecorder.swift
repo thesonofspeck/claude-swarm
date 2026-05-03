@@ -27,14 +27,16 @@ public final class TranscriptRecorder: @unchecked Sendable {
     }
 
     deinit {
-        // Ensure the file handle is released even if `close()` was never
-        // called. Run synchronously on the queue so we don't race a
-        // pending append().
-        queue.sync {
-            try? handle?.close()
-            handle = nil
-            closed = true
-        }
+        // No queue.sync here — if the last release happens on `queue`
+        // (e.g. inside an async append callback) sync-dispatching back
+        // would deadlock. Pending operations capture self weakly; the
+        // file handle is closed on next deallocation anyway, but to be
+        // explicit we close synchronously off-queue. The handle is a
+        // value type (FileHandle is a class, but its close is thread-
+        // safe) so this is safe.
+        try? handle?.close()
+        handle = nil
+        closed = true
     }
 
     public func append(_ data: Data) {

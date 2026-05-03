@@ -56,7 +56,7 @@ public final class RemoteCoordinator: ObservableObject {
     /// When non-nil, returns true to defer pushes until the window ends.
     /// Wired to AppEnvironment so RemoteCoordinator stays decoupled from
     /// AppSettings while still respecting the quiet-hours toggle.
-    public var quietHoursPredicate: (() -> Bool)?
+    public var quietHoursPredicate: (@Sendable () -> Bool)?
 
     public init(
         macId: String,
@@ -92,12 +92,13 @@ public final class RemoteCoordinator: ObservableObject {
         }
 
         rebuildSender()
-        try server.start()
-        Task { await self.refreshPaired() }
-
+        // Wire the command handler BEFORE start() so a fast iOS reconnect
+        // can't deliver its first command into a nil handler.
         server.setCommandHandler { [weak self] cmd, record in
             await self?.handle(command: cmd, from: record)
         }
+        try server.start()
+        Task { await self.refreshPaired() }
     }
 
     deinit {
