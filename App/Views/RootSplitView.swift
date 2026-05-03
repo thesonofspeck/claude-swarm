@@ -10,6 +10,7 @@ struct RootSplitView: View {
     @State private var showCommandPalette = false
     @State private var showInbox = false
     @State private var showGlobalSearch = false
+    @State private var showWorktreeJanitor = false
     @State private var newSessionProjectId: String?
     @State private var didRestoreSelection = false
 
@@ -116,6 +117,13 @@ struct RootSplitView: View {
             GlobalSearchSheet(selectedSession: $selectedSession)
                 .environmentObject(env)
         }
+        .sheet(isPresented: $showWorktreeJanitor) {
+            WorktreeJanitorSheet()
+                .environmentObject(env)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .swarmShowWorktreeJanitor)) { _ in
+            showWorktreeJanitor = true
+        }
         .onAppear {
             if !env.settings.hasCompletedOnboarding {
                 showOnboarding = true
@@ -155,4 +163,5 @@ struct NewSessionContext: Identifiable {
 extension Notification.Name {
     static let swarmNewSession = Notification.Name("ClaudeSwarm.NewSession")
     static let swarmCommandPalette = Notification.Name("ClaudeSwarm.CommandPalette")
+    static let swarmShowWorktreeJanitor = Notification.Name("ClaudeSwarm.ShowWorktreeJanitor")
 }

@@ -36,6 +36,7 @@ public final class AppEnvironment: ObservableObject {
     public let remote: RemoteCoordinator
     public let library: LibraryStore
     public let activity: ActivityLog
+    public let worktreeJanitor: WorktreeJanitor
     /// Implicitly-unwrapped because it's assigned after all the other
     /// stored properties — its closure captures `self`, which Swift 6
     /// will only allow once every other `let` property is initialized.
@@ -61,6 +62,7 @@ public final class AppEnvironment: ObservableObject {
         self.sessionsRepo = SessionRepository(db: db)
         self.taskCache = TaskCacheRepository(db: db)
         self.prCache = PRCacheRepository(db: db)
+        self.worktreeJanitor = WorktreeJanitor(projects: projects, sessions: sessionsRepo)
         let wrikeClient = WrikeClient(keychain: keychain)
         self.wrike = wrikeClient
         self.wrikeBridge = WrikeBridge(client: wrikeClient)
@@ -173,7 +175,7 @@ public final class AppEnvironment: ObservableObject {
         }
         backgroundTasks.append(drainTask)
 
-        let janitor = WorktreeJanitor(projects: projects, sessions: sessionsRepo)
+        let janitor = self.worktreeJanitor
         let projectsForBg = self.projects
         let sessionsForBg = self.sessionsRepo
         Task.detached {

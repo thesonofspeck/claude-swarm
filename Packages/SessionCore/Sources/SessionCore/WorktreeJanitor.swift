@@ -14,6 +14,25 @@ public actor WorktreeJanitor {
         public let removedOrphanWorktrees: Int
     }
 
+    /// Read-only snapshot of what the next reconcile would do. Lets the
+    /// UI show pending work before the user pulls the trigger.
+    public struct Inspection: Sendable, Equatable {
+        public struct DeadSession: Sendable, Equatable, Identifiable {
+            public let session: Session
+            public let project: Project
+            public var id: String { session.id }
+        }
+        public struct OrphanWorktree: Sendable, Equatable, Identifiable {
+            public let path: String
+            public let branch: String
+            public let project: Project
+            public var id: String { path }
+        }
+        public let deadSessions: [DeadSession]
+        public let orphanWorktrees: [OrphanWorktree]
+        public var isClean: Bool { deadSessions.isEmpty && orphanWorktrees.isEmpty }
+    }
+
     public let projects: ProjectRepository
     public let sessions: SessionRepository
     public let worktrees: WorktreeService
@@ -84,5 +103,60 @@ public actor WorktreeJanitor {
             cleanedDeadSessions: deadSessions,
             removedOrphanWorktrees: orphanWorktrees
         )
+    }
+
+    /// Read-only counterpart to `reconcile` — used by the Worktree
+    /// Janitor sheet so the user sees exactly what's about to change.
+    public func inspect() async -> Inspection {
+        var dead: [Inspection.DeadSession] = []
+        var orphans: [Inspection.OrphanWorktree] = []
+
+        let projectList = (try? projects.all()) ?? []
+        for project in projectList {
+            let repoURL = URL(fileURLWithPath: project.localPath)
+            let liveTrees: [Worktree]
+            do { liveTrees = try await worktrees.list(repo: repoURL) }
+            catch { continue }
+            let livePaths = Set(liveTrees.map(\.path.standardizedFileURL.path))
+
+            let dbSessions: [Session]
+            do { dbSessions = try sessions.forProject(project.id) }
+            catch { continue }
+            let knownPaths = Set(dbSessions.map { URL(fileURLWithPath: $0.worktreePath).standardizedFileURL.path })
+
+            for session in dbSessions
+                where (session.status == .running
+                       || session.status == .starting
+                       || session.status == .waitingForInput)
+                    && !livePaths.contains(URL(fileURLWithPath: session.worktreePath).standardizedFileURL.path)
+            {
+                dead.append(.init(session: session, project: project))
+            }
+
+            for tree in liveTrees {
+                let path = tree.path.standardizedFileURL.path
+                guard path.contains(AppDirectories.worktreesRoot.path) else { continue }
+                if !knownPaths.contains(path) {
+                    orphans.append(.init(path: path, branch: tree.branch, project: project))
+                }
+            }
+        }
+        return Inspection(deadSessions: dead, orphanWorktrees: orphans)
+    }
+
+    /// Removes a single orphan worktree by path, using the project as the
+    /// repo context. Idempotent — if the path is already gone, returns
+    /// without erroring.
+    public func removeOrphan(_ orphan: Inspection.OrphanWorktree) async throws {
+        let repoURL = URL(fileURLWithPath: orphan.project.localPath)
+        let path = URL(fileURLWithPath: orphan.path)
+        guard FileManager.default.fileExists(atPath: orphan.path) else { return }
+        try await worktrees.remove(repo: repoURL, worktreePath: path, force: true)
+    }
+
+    /// Marks a dead session's status as finished without touching its
+    /// worktree (which we already verified is gone).
+    public func markDead(_ dead: Inspection.DeadSession) throws {
+        try sessions.setStatus(id: dead.session.id, .finished)
     }
 }

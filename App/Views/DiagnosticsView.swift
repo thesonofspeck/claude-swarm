@@ -19,6 +19,12 @@ struct DiagnosticsView: View {
                     .foregroundStyle(Palette.fgBright)
                 Spacer()
                 Button {
+                    NotificationCenter.default.post(name: .swarmShowWorktreeJanitor, object: nil)
+                } label: {
+                    Label("Worktree janitor", systemImage: "sparkles.rectangle.stack")
+                }
+                .buttonStyle(.bordered)
+                Button {
                     Task { await runChecks() }
                 } label: {
                     if running {
