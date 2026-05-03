@@ -200,8 +200,7 @@ public final class AppEnvironment {
         backgroundTasks.append(Task.detached {
             _ = await LaunchPrewarmer.warmTools(settings: snapshotSettings)
             if Task.isCancelled { return }
-            await MainActor.run { LaunchPrewarmer.warmKeychain(kcRef) }
-        })
+            LaunchPrewarmer.warmKeychain(kcRef)        })
         // Workspace prewarm needs MainActor-isolated env state; run as a
         // MainActor Task instead of bouncing through a detached one.
         if let mru = snapshotSettings.lastSelectedSessionId {

@@ -13,77 +13,40 @@ struct GlobalSearchSheet: View {
 
     @State private var query: String = ""
     @State private var results: SearchService.Results = .init()
-    @State private var enabled: Set<SearchService.Source> = Set(SearchService.Source.allCases)
+    @State private var scope: SearchService.Source? = nil
     @State private var searching = false
     @State private var searchTask: Task<Void, Never>?
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider().background(Palette.divider)
+        NavigationStack {
             list
-            Divider().background(Palette.divider)
-            footer
-        }
-        .frame(minWidth: 720, minHeight: 540)
-        .background(Palette.bgBase)
-    }
-
-    private var header: some View {
-        VStack(spacing: Metrics.Space.sm) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(Palette.fgMuted)
-                TextField("Search transcripts, memory, code…", text: $query)
-                    .textFieldStyle(.plain)
-                    .font(Type.body)
-                    .onSubmit { triggerSearch() }
-                if searching {
-                    ProgressView().controlSize(.small)
-                }
-                if !query.isEmpty {
-                    Button { query = ""; results = .init() } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(Palette.fgMuted)
+                .frame(minWidth: 720, minHeight: 540)
+                .background(Palette.bgBase)
+                .searchable(text: $query, placement: .toolbar, prompt: "Search transcripts, memory, code…")
+                .searchScopes($scope, activation: .onSearchPresentation) {
+                    Text("All").tag(Optional<SearchService.Source>.none)
+                    ForEach(SearchService.Source.allCases, id: \.self) { source in
+                        Text(source.label).tag(Optional(source))
                     }
-                    .buttonStyle(.plain)
                 }
-            }
-            .padding(Metrics.Space.md)
-            .background(
-                RoundedRectangle(cornerRadius: Metrics.Radius.md)
-                    .fill(Palette.bgRaised)
-            )
-
-            HStack(spacing: 6) {
-                ForEach(SearchService.Source.allCases, id: \.self) { source in
-                    Button {
-                        if enabled.contains(source) {
-                            enabled.remove(source)
-                        } else {
-                            enabled.insert(source)
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        if results.truncated {
+                            Text("Showing first 50 per source")
+                                .font(Type.caption)
+                                .foregroundStyle(Palette.orange)
                         }
-                        triggerSearch()
-                    } label: {
-                        Pill(
-                            text: source.label,
-                            tint: enabled.contains(source) ? tint(for: source) : Palette.fgMuted
-                        )
-                        .opacity(enabled.contains(source) ? 1 : 0.45)
                     }
-                    .buttonStyle(.plain)
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { dismiss() }
+                            .keyboardShortcut(.cancelAction)
+                            .keyboardShortcut(.defaultAction)
+                    }
                 }
-                Spacer()
-                if results.truncated {
-                    Text("Showing first 50 per source")
-                        .font(Type.caption)
-                        .foregroundStyle(Palette.orange)
-                }
-            }
+                .onChange(of: query) { _, _ in triggerSearch() }
+                .onChange(of: scope) { _, _ in triggerSearch() }
+                .onSubmit(of: .search) { triggerSearch() }
         }
-        .padding(Metrics.Space.md)
-        .background(Palette.bgSidebar)
-        .onChange(of: query) { _, _ in triggerSearch() }
     }
 
     private var list: some View {
@@ -159,17 +122,6 @@ struct GlobalSearchSheet: View {
         .buttonStyle(.plain)
     }
 
-    private var footer: some View {
-        HStack {
-            Spacer()
-            Button("Done") { dismiss() }
-                .keyboardShortcut(.cancelAction)
-                .keyboardShortcut(.defaultAction)
-        }
-        .padding(Metrics.Space.md)
-        .background(Palette.bgSidebar)
-    }
-
     private func tint(for source: SearchService.Source) -> Color {
         switch source {
         case .transcripts: return Palette.cyan
@@ -201,7 +153,7 @@ struct GlobalSearchSheet: View {
     private func triggerSearch() {
         searchTask?.cancel()
         let q = query
-        let sources = enabled
+        let sources: Set<SearchService.Source> = scope.map { Set([$0]) } ?? Set(SearchService.Source.allCases)
         guard !q.trimmingCharacters(in: .whitespaces).isEmpty else {
             results = .init()
             searching = false

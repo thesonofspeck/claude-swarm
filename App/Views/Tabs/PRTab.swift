@@ -281,8 +281,7 @@ struct PRTab: View {
         guard let project, let pr else { return }
         let body = (replyDrafts[comment.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
-        await MainActor.run { _ = posting.insert(comment.id) }
-        do {
+        _ = posting.insert(comment.id)        do {
             // ?? uses an autoclosure that can't carry try/await; resolve
             // the remote once and fall back to its owner/repo if either
             // project field is missing.
@@ -321,8 +320,7 @@ struct PRTab: View {
             }
             await load()
         } catch {
-            await MainActor.run { self.error = "Could not resolve: \(error.localizedDescription)" }
-        }
+            self.error = "Could not resolve: \(error.localizedDescription)"        }
     }
 
     @ViewBuilder
@@ -383,8 +381,7 @@ struct PRTab: View {
 
     private func load() async {
         guard let project else { return }
-        await MainActor.run { loading = true; error = nil }
-        let dir = URL(fileURLWithPath: session.worktreePath)
+        loading = true; error = nil        let dir = URL(fileURLWithPath: session.worktreePath)
         do {
             if let pr = try await env.github.pullRequestForBranch(in: dir, branch: session.branch) {
                 let owner: String
@@ -429,8 +426,7 @@ struct PRTab: View {
 
     private func create() async {
         guard let project else { return }
-        await MainActor.run { creating = true; error = nil }
-        let dir = URL(fileURLWithPath: session.worktreePath)
+        creating = true; error = nil        let dir = URL(fileURLWithPath: session.worktreePath)
         do {
             try await env.github.pushBranch(in: dir, branch: session.branch)
             let result = try await env.github.createPullRequest(
@@ -450,8 +446,7 @@ struct PRTab: View {
                 await env.wrikeBridge.transition(taskId: id, to: .inReview)
             }
             await load()
-            await MainActor.run { creating = false }
-        } catch {
+            creating = false        } catch {
             await MainActor.run {
                 self.error = "\(error.localizedDescription)"
                 creating = false
@@ -460,8 +455,7 @@ struct PRTab: View {
     }
 
     private func draftFromDiff() async {
-        await MainActor.run { drafting = true; error = nil }
-        do {
+        drafting = true; error = nil        do {
             let dir = URL(fileURLWithPath: session.worktreePath)
             let files = (try? await env.diff.workingTreeDiff(in: dir)) ?? []
             let diffText = renderDiff(files)

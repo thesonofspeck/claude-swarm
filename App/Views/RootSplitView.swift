@@ -23,7 +23,7 @@ struct RootSplitView: View {
             )
             .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 360)
             .background(Palette.bgSidebar)
-        } content: {
+        } detail: {
             Group {
                 if let session = selectedSession {
                     DetailView(session: session)
@@ -37,11 +37,21 @@ struct RootSplitView: View {
             }
             .navigationSplitViewColumnWidth(min: 600, ideal: 800)
             .background(Palette.bgBase)
-        } detail: {
-            if inspectorVisible {
+            .inspector(isPresented: $inspectorVisible) {
                 InspectorView(session: selectedSession)
-                    .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 380)
+                    .inspectorColumnWidth(min: 260, ideal: 300, max: 380)
                     .background(Palette.bgSidebar)
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            IconButton(
+                                systemImage: inspectorVisible ? "sidebar.right" : "sidebar.squares.right",
+                                help: "Toggle inspector — ⌘⌥I"
+                            ) {
+                                withAnimation(Motion.spring) { inspectorVisible.toggle() }
+                            }
+                            .keyboardShortcut("i", modifiers: [.command, .option])
+                        }
+                    }
             }
         }
         .toolbar {
@@ -66,15 +76,6 @@ struct RootSplitView: View {
                     showGlobalSearch = true
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
-            }
-            ToolbarItem(placement: .primaryAction) {
-                IconButton(
-                    systemImage: inspectorVisible ? "sidebar.right" : "sidebar.squares.right",
-                    help: "Toggle inspector — ⌘⌥I"
-                ) {
-                    withAnimation(Motion.spring) { inspectorVisible.toggle() }
-                }
-                .keyboardShortcut("i", modifiers: [.command, .option])
             }
         }
         .overlay(alignment: .bottom) {
@@ -147,12 +148,15 @@ struct RootSplitView: View {
                 Task { await ws.reloadAll() }
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .swarmNewSession)) { _ in
-            newSessionProjectId = selectedSession?.projectId ?? ""
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .swarmCommandPalette)) { _ in
-            showCommandPalette = true
-        }
+        .focusedSceneValue(SwarmActions.self, SwarmActions(
+            newSession: { newSessionProjectId = selectedSession?.projectId ?? "" },
+            addProject: { NotificationCenter.default.post(name: .swarmAddProject, object: nil) },
+            commandPalette: { showCommandPalette = true },
+            selectTab: { raw in
+                NotificationCenter.default.post(name: .swarmSelectTab, object: raw)
+            },
+            refresh: { NotificationCenter.default.post(name: .swarmRefresh, object: nil) }
+        ))
     }
 }
 

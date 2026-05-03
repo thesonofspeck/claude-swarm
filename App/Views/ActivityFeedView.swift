@@ -105,6 +105,5 @@ struct ActivityFeedView: View {
 
     private func load() async {
         let result = (try? env.activity.recent(limit: 200)) ?? []
-        await MainActor.run { events = result }
-    }
+        events = result    }
 }

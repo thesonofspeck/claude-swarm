@@ -74,7 +74,7 @@ struct DiagnosticsView: View {
     }
 
     private func runChecks() async {
-        await MainActor.run { running = true }
+        running = true
         var results: [Check] = []
         results.append(contentsOf: await toolChecks())
         results.append(await ghAuthCheck())
@@ -84,10 +84,8 @@ struct DiagnosticsView: View {
         results.append(await sleepGuardCheck())
         results.append(await pairedDevicesCheck())
         results.append(await projectsCheck())
-        await MainActor.run {
-            checks = results
-            running = false
-        }
+        checks = results
+        running = false
     }
 
     private func toolChecks() async -> [Check] {

@@ -248,8 +248,7 @@ struct TasksTab: View {
 
     private func startSession(for task: WrikeTask) async {
         guard let project else { return }
-        await MainActor.run { starting = true }
-        do {
+        starting = true        do {
             let result = try await env.sessionManager.start(
                 for: project,
                 taskId: task.id,
@@ -275,8 +274,7 @@ struct TasksTab: View {
         guard let project, let folder = project.wrikeFolderId else {
             tasks = []; return
         }
-        await MainActor.run { loading = true; error = nil }
-        do {
+        loading = true; error = nil        do {
             let result = try await env.wrike.tasks(in: folder)
             await MainActor.run {
                 tasks = result

@@ -291,8 +291,7 @@ struct ToolsStep: View {
     }
 
     private func detectAll() async {
-        await MainActor.run { detecting = true }
-        let overrides = currentOverrides()
+        detecting = true        let overrides = currentOverrides()
         let result = await detector.detectAll(overrides: overrides)
         await MainActor.run {
             statuses = result
@@ -382,8 +381,7 @@ struct ToolsStep: View {
 
     private func install(_ tool: Tool) async {
         guard let formula = tool.brewFormula else { return }
-        await MainActor.run { _ = installing.insert(tool.id); installLog[tool.id] = "" }
-        do {
+        _ = installing.insert(tool.id); installLog[tool.id] = ""        do {
             try await installer.install(formula: formula) { line in
                 Task { @MainActor in
                     installLog[tool.id, default: ""].append(line)
@@ -395,8 +393,7 @@ struct ToolsStep: View {
                 installLog[tool.id, default: ""].append("\n\(error.localizedDescription)\n")
             }
         }
-        await MainActor.run { _ = installing.remove(tool.id) }
-    }
+        _ = installing.remove(tool.id)    }
 
     private func chooseManual(for tool: Tool) {
         let panel = NSOpenPanel()

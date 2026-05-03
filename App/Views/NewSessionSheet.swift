@@ -106,8 +106,7 @@ struct NewSessionSheet: View {
             error = "Pick a project."
             return
         }
-        await MainActor.run { starting = true; error = nil }
-        do {
+        starting = true; error = nil        do {
             let result = try await env.sessionManager.start(
                 for: project,
                 taskId: taskId.isEmpty ? nil : taskId,
@@ -131,8 +130,7 @@ struct NewSessionSheet: View {
 
     private func draftPrompt() async {
         let project = projectList.projects.first { $0.id == projectId }
-        await MainActor.run { drafting = true; error = nil }
-        do {
+        drafting = true; error = nil        do {
             let result = try await env.llm.draftSessionPrompt(
                 from: taskTitle,
                 projectName: project?.name

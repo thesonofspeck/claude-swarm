@@ -206,8 +206,7 @@ struct LibraryTab: View {
     // MARK: - Actions
 
     private func load(project: Project) async {
-        await MainActor.run { loading = true; error = nil }
-        do {
+        loading = true; error = nil        do {
             try await env.library.setTeamConfig(env.settings.teamLibrary)
             let snap = await env.library.snapshot(in: URL(fileURLWithPath: project.localPath))
             await MainActor.run {
@@ -223,8 +222,7 @@ struct LibraryTab: View {
     }
 
     private func refreshTeam(project: Project) async {
-        await MainActor.run { refreshing = true }
-        do {
+        refreshing = true        do {
             try await env.library.setTeamConfig(env.settings.teamLibrary)
             let snap = await env.library.snapshot(in: URL(fileURLWithPath: project.localPath))
             await MainActor.run {
@@ -244,8 +242,7 @@ struct LibraryTab: View {
             try await env.library.install(row.item, into: URL(fileURLWithPath: project.localPath))
             await load(project: project)
         } catch {
-            await MainActor.run { self.error = "\(error.localizedDescription)" }
-        }
+            self.error = "\(error.localizedDescription)"        }
     }
 
     private func uninstall(project: Project, row: LibraryView.Row) async {
@@ -253,8 +250,7 @@ struct LibraryTab: View {
             try await env.library.uninstall(row.item, from: URL(fileURLWithPath: project.localPath))
             await load(project: project)
         } catch {
-            await MainActor.run { self.error = "\(error.localizedDescription)" }
-        }
+            self.error = "\(error.localizedDescription)"        }
     }
 }
 

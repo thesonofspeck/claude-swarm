@@ -5,6 +5,7 @@ import ClaudeSwarmNotifications
 @main
 struct ClaudeSwarmApp: App {
     @State private var bootstrap = AppBootstrap()
+    @FocusedValue(SwarmActions.self) private var actions
 
     var body: some Scene {
         WindowGroup {
@@ -14,37 +15,32 @@ struct ClaudeSwarmApp: App {
         .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("New Session") {
-                    NotificationCenter.default.post(name: .swarmNewSession, object: nil)
-                }
-                .keyboardShortcut("n", modifiers: .command)
+                Button("New Session") { actions?.newSession() }
+                    .keyboardShortcut("n", modifiers: .command)
+                    .disabled(actions == nil)
 
-                Button("Add Project…") {
-                    NotificationCenter.default.post(name: .swarmAddProject, object: nil)
-                }
-                .keyboardShortcut("l", modifiers: [.command, .shift])
+                Button("Add Project…") { actions?.addProject() }
+                    .keyboardShortcut("l", modifiers: [.command, .shift])
+                    .disabled(actions == nil)
             }
             CommandGroup(after: .toolbar) {
-                Button("Command Palette") {
-                    NotificationCenter.default.post(name: .swarmCommandPalette, object: nil)
-                }
-                .keyboardShortcut("k", modifiers: .command)
+                Button("Command Palette") { actions?.commandPalette() }
+                    .keyboardShortcut("k", modifiers: .command)
+                    .disabled(actions == nil)
 
                 Divider()
 
                 ForEach(Array(DetailTab.allCases.enumerated()), id: \.element) { idx, tab in
                     if idx < 9 {
-                        Button(tab.label) {
-                            NotificationCenter.default.post(name: .swarmSelectTab, object: tab.rawValue)
-                        }
-                        .keyboardShortcut(KeyEquivalent(Character("\(idx + 1)")), modifiers: .command)
+                        Button(tab.label) { actions?.selectTab(tab.rawValue) }
+                            .keyboardShortcut(KeyEquivalent(Character("\(idx + 1)")), modifiers: .command)
+                            .disabled(actions == nil)
                     }
                 }
 
-                Button("Refresh") {
-                    NotificationCenter.default.post(name: .swarmRefresh, object: nil)
-                }
-                .keyboardShortcut("r", modifiers: .command)
+                Button("Refresh") { actions?.refresh() }
+                    .keyboardShortcut("r", modifiers: .command)
+                    .disabled(actions == nil)
             }
         }
 
@@ -227,4 +223,18 @@ extension Notification.Name {
     static let swarmAddProject = Notification.Name("ClaudeSwarm.AddProject")
     static let swarmSelectTab = Notification.Name("ClaudeSwarm.SelectTab")
     static let swarmRefresh = Notification.Name("ClaudeSwarm.Refresh")
+}
+
+/// Bag of menu-bar handlers that the focused window publishes via
+/// `focusedSceneValue`. Replaces the previous NotificationCenter-based
+/// glue: menu items now auto-disable when no window is focused (the
+/// `FocusedValue` is nil) and dispatch directly to the active scene.
+struct SwarmActions: FocusedValueKey {
+    typealias Value = Self
+
+    let newSession: () -> Void
+    let addProject: () -> Void
+    let commandPalette: () -> Void
+    let selectTab: (String) -> Void
+    let refresh: () -> Void
 }

@@ -108,21 +108,17 @@ public final class ProjectListViewModel {
                 group.addTask {
                     do {
                         for try await rows in projectsObs.values(in: pool) {
-                            await MainActor.run { self?.projects = rows }
-                        }
+                            self?.projects = rows                        }
                     } catch {
-                        await MainActor.run { self?.error = "\(error)" }
-                    }
+                        self?.error = "\(error)"                    }
                 }
                 group.addTask {
                     do {
                         for try await rows in sessionsObs.values(in: pool) {
                             let grouped = Dictionary(grouping: rows, by: \.projectId)
-                            await MainActor.run { self?.sessionsByProject = grouped }
-                        }
+                            self?.sessionsByProject = grouped                        }
                     } catch {
-                        await MainActor.run { self?.error = "\(error)" }
-                    }
+                        self?.error = "\(error)"                    }
                 }
             }
         }

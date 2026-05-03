@@ -90,8 +90,7 @@ struct NewWrikeTaskSheet: View {
     }
 
     private func draft() async {
-        await MainActor.run { drafting = true; error = nil }
-        do {
+        drafting = true; error = nil        do {
             let result = try await env.llm.draftWrikeTask(
                 from: hint,
                 projectContext: project.name
@@ -114,16 +113,14 @@ struct NewWrikeTaskSheet: View {
             error = "No Wrike folder mapped on this project."
             return
         }
-        await MainActor.run { creating = true; error = nil }
-        do {
+        creating = true; error = nil        do {
             let mutation = WrikeTaskMutation(
                 title: title,
                 description: body_,
                 importance: importance
             )
             _ = try await env.wrike.createTask(in: folderId, mutation: mutation)
-            await MainActor.run { creating = false; dismiss() }
-        } catch {
+            creating = false; dismiss()        } catch {
             await MainActor.run {
                 self.error = error.localizedDescription
                 creating = false
