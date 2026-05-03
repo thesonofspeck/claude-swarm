@@ -42,7 +42,7 @@ struct FilesTab: View {
                 }
             }
         }
-        .background(QuickLookPreview(url: $quickLookURL))
+        .quickLookPreview($quickLookURL)
         .focusable()
         .onKeyPress(.space) {
             if let id = selection, let node = find(id, in: entries), !node.isDirectory {
@@ -124,40 +124,32 @@ struct FilesTab: View {
     private func loadTree() async {
         let root = URL(fileURLWithPath: session.worktreePath)
         let nodes = await Task.detached { try? FileNode.tree(at: root, depth: 6) }.value ?? []
-        await MainActor.run { entries = nodes }
+        entries = nodes
     }
 
     private func loadFile(_ url: URL) async {
-        await MainActor.run { loadingFile = true; error = nil }
+        loadingFile = true; error = nil
         do {
             let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
             let size = attrs[.size] as? Int ?? 0
             if size > 1_000_000 {
-                await MainActor.run {
-                    fileContents = ""
-                    error = "File is \(size / 1024) KiB — too large to preview here. Open it in your editor."
-                    loadingFile = false
-                }
+                fileContents = ""
+                error = "File is \(size / 1024) KiB — too large to preview here. Open it in your editor."
+                loadingFile = false
                 return
             }
             let data = try Data(contentsOf: url)
             guard let text = String(data: data, encoding: .utf8) else {
-                await MainActor.run {
-                    fileContents = ""
-                    error = "Binary file — preview not supported."
-                    loadingFile = false
-                }
+                fileContents = ""
+                error = "Binary file — preview not supported."
+                loadingFile = false
                 return
             }
-            await MainActor.run {
-                fileContents = text
-                loadingFile = false
-            }
+            fileContents = text
+            loadingFile = false
         } catch {
-            await MainActor.run {
-                self.error = "\(error.localizedDescription)"
-                loadingFile = false
-            }
+            self.error = "\(error.localizedDescription)"
+            loadingFile = false
         }
     }
 

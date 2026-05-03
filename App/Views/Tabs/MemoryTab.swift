@@ -11,7 +11,7 @@ struct MemoryTab: View {
     @State private var entries: [MemoryEntry] = []
     @State private var query = ""
     @State private var scope: Scope = .project
-    @StateObject private var ops = AsyncTracker()
+    @State private var ops = AsyncTracker()
     @State private var selection: String?
 
     enum Scope: String, CaseIterable, Identifiable {

@@ -1,19 +1,21 @@
 import Foundation
+import Observation
 import SwiftUI
 
-/// Tiny `@Observable`-style helper for the loading + error pattern that
-/// every tab in the app was repeating:
+/// Tiny helper for the loading + error pattern that every tab in the
+/// app was repeating:
 ///
 /// ```swift
-/// @StateObject private var ops = AsyncTracker()
+/// @State private var ops = AsyncTracker()
 /// // …
 /// .task { await ops.run { try await load() } }
 /// // ops.isLoading and ops.error drive your UI
 /// ```
+@Observable
 @MainActor
-public final class AsyncTracker: ObservableObject {
-    @Published public private(set) var isLoading: Bool = false
-    @Published public private(set) var error: String?
+public final class AsyncTracker {
+    public private(set) var isLoading: Bool = false
+    public private(set) var error: String?
 
     public init() {}
 
