@@ -20,9 +20,19 @@ struct RootSplitView: View {
             .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 360)
             .background(Palette.bgSidebar)
         } content: {
-            DetailView(session: selectedSession)
-                .navigationSplitViewColumnWidth(min: 600, ideal: 800)
-                .background(Palette.bgBase)
+            Group {
+                if let session = selectedSession {
+                    DetailView(session: session)
+                } else {
+                    WelcomeView(
+                        feed: env.welcomeFeed,
+                        selectedSession: $selectedSession,
+                        newSessionProjectId: $newSessionProjectId
+                    )
+                }
+            }
+            .navigationSplitViewColumnWidth(min: 600, ideal: 800)
+            .background(Palette.bgBase)
         } detail: {
             if inspectorVisible {
                 InspectorView(session: selectedSession)

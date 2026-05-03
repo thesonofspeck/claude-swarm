@@ -50,7 +50,7 @@ enum DetailTab: String, CaseIterable, Identifiable {
 struct DetailView: View {
     @EnvironmentObject var env: AppEnvironment
     @EnvironmentObject var registry: RunningSessionRegistry
-    let session: Session?
+    let session: Session
     @State private var tab: DetailTab = .terminal
     @State private var project: Project?
 
@@ -62,11 +62,11 @@ struct DetailView: View {
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
                 .animation(.easeInOut(duration: 0.18), value: tab)
         }
-        .onChange(of: session?.id) { _, newId in
+        .onChange(of: session.id) { _, newId in
             registry.setForeground(newId)
         }
-        .task(id: session?.projectId) {
-            project = session.flatMap { try? env.projects.find(id: $0.projectId) }
+        .task(id: session.projectId) {
+            project = try? env.projects.find(id: session.projectId)
         }
         .onReceive(NotificationCenter.default.publisher(for: .swarmSelectTab)) { note in
             if let raw = note.object as? String, let t = DetailTab(rawValue: raw) {
@@ -94,29 +94,20 @@ struct DetailView: View {
 
     @ViewBuilder
     private var content: some View {
-        if let session {
-            switch tab {
-            case .terminal: TerminalTab(session: session)
-            case .changes: ChangesTab(session: session)
-            case .files: FilesTab(session: session)
-            case .diff: DiffTab(session: session)
-            case .history: HistoryTab(session: session)
-            case .pr: PRTab(session: session, project: project)
-            case .tasks: TasksTab(session: session, project: project)
-            case .memory: MemoryTab(project: project, session: session)
-            case .agents: AgentsTab(project: project)
-            case .library: LibraryTab(project: project)
-            case .policy: PolicyTab(project: project)
-            case .claudeMd: ClaudeMdTab(project: project)
-            case .transcript: TranscriptTab(session: session)
-            }
-        } else {
-            EmptyState(
-                title: "No session selected",
-                systemImage: "sparkles.rectangle.stack",
-                description: "Pick a session from the sidebar or start a new one from the Tasks tab.",
-                tint: Palette.blue
-            )
+        switch tab {
+        case .terminal: TerminalTab(session: session)
+        case .changes: ChangesTab(session: session)
+        case .files: FilesTab(session: session)
+        case .diff: DiffTab(session: session)
+        case .history: HistoryTab(session: session)
+        case .pr: PRTab(session: session, project: project)
+        case .tasks: TasksTab(session: session, project: project)
+        case .memory: MemoryTab(project: project, session: session)
+        case .agents: AgentsTab(project: project)
+        case .library: LibraryTab(project: project)
+        case .policy: PolicyTab(project: project)
+        case .claudeMd: ClaudeMdTab(project: project)
+        case .transcript: TranscriptTab(session: session)
         }
     }
 }

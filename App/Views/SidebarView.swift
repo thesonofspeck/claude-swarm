@@ -15,6 +15,23 @@ struct SidebarView: View {
 
     var body: some View {
         List(selection: $selectedSession) {
+            Button {
+                selectedSession = nil
+            } label: {
+                Label {
+                    Text("Home")
+                        .font(Type.body)
+                        .foregroundStyle(Palette.fgBright)
+                } icon: {
+                    Image(systemName: "house.fill")
+                        .foregroundStyle(Palette.cyan)
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, 4)
+            .keyboardShortcut("0", modifiers: .command)
+            .help("Welcome — ⌘0")
+
             ForEach(projectList.projects) { project in
                 Section {
                     let sessions = projectList.sessions(for: project.id)
