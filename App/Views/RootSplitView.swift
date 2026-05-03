@@ -5,7 +5,8 @@ import PersistenceKit
 struct RootSplitView: View {
     @EnvironmentObject var env: AppEnvironment
     @State private var selectedSession: Session?
-    @State private var inspectorVisible = true
+    @SceneStorage("rootSplit.columnVisibility") private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    @SceneStorage("rootSplit.inspectorVisible") private var inspectorVisible: Bool = true
     @State private var showOnboarding = false
     @State private var showCommandPalette = false
     @State private var showInbox = false
@@ -15,7 +16,7 @@ struct RootSplitView: View {
     @State private var didRestoreSelection = false
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(
                 selectedSession: $selectedSession,
                 newSessionProjectId: $newSessionProjectId

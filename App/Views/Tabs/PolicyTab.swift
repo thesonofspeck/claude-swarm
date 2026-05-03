@@ -247,7 +247,8 @@ struct PolicyTab: View {
             try data.write(to: url, options: .atomic)
             permDirty = false
             withAnimation { savedToast = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(1500))
                 withAnimation { savedToast = false }
             }
         } catch {
@@ -274,7 +275,8 @@ struct PolicyTab: View {
             try encoder.encode(policy).write(to: url, options: .atomic)
             dirty = false
             withAnimation { savedToast = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(1500))
                 withAnimation { savedToast = false }
             }
         } catch {

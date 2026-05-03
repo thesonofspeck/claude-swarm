@@ -113,7 +113,10 @@ struct ClaudeMdTab: View {
             try Data(content.utf8).write(to: mdURL(in: project), options: .atomic)
             dirty = false
             withAnimation { savedToast = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            // Structured Task instead of DispatchQueue.asyncAfter so
+            // the toast cancels with the view.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(1500))
                 withAnimation { savedToast = false }
             }
         } catch {
