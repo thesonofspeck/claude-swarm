@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import GRDB
 import PersistenceKit
 import SessionCore
 
@@ -9,25 +10,28 @@ public final class ProjectListViewModel: ObservableObject {
     @Published public private(set) var sessionsByProject: [String: [Session]] = [:]
     @Published public var error: String?
 
+    private let database: Database
     private let projectsRepo: ProjectRepository
     private let sessionsRepo: SessionRepository
     private let manager: SessionManager
-    private var refreshTask: Task<Void, Never>?
+    private var observationTask: Task<Void, Never>?
 
     public init(
+        database: Database,
         projects: ProjectRepository,
         sessions: SessionRepository,
         manager: SessionManager
     ) {
+        self.database = database
         self.projectsRepo = projects
         self.sessionsRepo = sessions
         self.manager = manager
         reload()
-        startPolling()
+        startObserving()
     }
 
     deinit {
-        refreshTask?.cancel()
+        observationTask?.cancel()
     }
 
     public func reload() {
@@ -83,17 +87,41 @@ public final class ProjectListViewModel: ObservableObject {
         sessionsByProject[projectId] ?? []
     }
 
-    /// 2 seconds is fast enough that hook-driven status changes feel
-    /// instant in the sidebar and slow enough that the SQLite read cost
-    /// is irrelevant (the equality guard further skips re-publishes when
-    /// nothing changed).
-    private static let pollInterval: TimeInterval = 2
+    /// Watches the `session` and `project` tables via GRDB
+    /// `ValueObservation` so updates from hook events / session state
+    /// changes drive sidebar refreshes within milliseconds, with no
+    /// polling. Replaces the previous 2s timer that scanned both
+    /// tables every tick regardless of activity.
+    private func startObserving() {
+        let pool = database.queue
+        let projectsObs = ValueObservation.tracking { db in
+            try Project.order(Column("name")).fetchAll(db)
+        }
+        let sessionsObs = ValueObservation.tracking { db in
+            try Session.order(Column("createdAt").desc).fetchAll(db)
+        }
 
-    private func startPolling() {
-        refreshTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(Self.pollInterval * 1_000_000_000))
-                self?.reload()
+        observationTask = Task { @MainActor [weak self] in
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    do {
+                        for try await rows in projectsObs.values(in: pool) {
+                            await MainActor.run { self?.projects = rows }
+                        }
+                    } catch {
+                        await MainActor.run { self?.error = "\(error)" }
+                    }
+                }
+                group.addTask {
+                    do {
+                        for try await rows in sessionsObs.values(in: pool) {
+                            let grouped = Dictionary(grouping: rows, by: \.projectId)
+                            await MainActor.run { self?.sessionsByProject = grouped }
+                        }
+                    } catch {
+                        await MainActor.run { self?.error = "\(error)" }
+                    }
+                }
             }
         }
     }

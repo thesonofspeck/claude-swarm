@@ -11,6 +11,7 @@ struct AgentRunTab: View {
     @State private var root: AgentRun?
     @State private var loading = true
     @State private var selectedRunId: UUID?
+    @State private var lastParsedSize: UInt64 = 0
 
     var body: some View {
         Group {
@@ -29,12 +30,15 @@ struct AgentRunTab: View {
         }
         .task(id: session.id) { await reload() }
         .task(id: session.id) {
-            // Auto-reload on workspace pulse (the transcript file lives
-            // outside the worktree, so reload also on a 5 s timer).
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(5))
-                if Task.isCancelled { break }
-                await reload()
+            // Reload only when the workspace pulse signals .files —
+            // PostToolUse hooks and FSEvents both flow through it.
+            // No polling timer; the transcript only changes when the
+            // session is actually doing something.
+            let ws = env.gitWorkspace(for: session.worktreePath)
+            for await invalidations in ws.pulse.events() {
+                if invalidations.contains(.files) || invalidations.contains(.history) {
+                    await reload()
+                }
             }
         }
     }
@@ -139,8 +143,17 @@ struct AgentRunTab: View {
 
     private func reload() async {
         let url = URL(fileURLWithPath: session.transcriptPath)
+        // Skip the parse entirely if the transcript hasn't grown since
+        // last parse — the parser is the single most expensive thing on
+        // this tab.
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? UInt64) ?? 0
+        if size == lastParsedSize, root != nil {
+            loading = false
+            return
+        }
         let result = await Task.detached { AgentRunParser.parse(transcriptAt: url) }.value
         root = result
+        lastParsedSize = size
         loading = false
     }
 

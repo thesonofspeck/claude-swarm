@@ -94,12 +94,15 @@ public actor SearchService {
         let urls = (try? fm.contentsOfDirectory(at: transcriptsRoot, includingPropertiesForKeys: nil)) ?? []
         let sessionsByPath = Dictionary(uniqueKeysWithValues: sessions.map { ($0.transcriptPath, $0) })
         var hits: [Hit] = []
-        let needle = query.lowercased()
         for url in urls where url.pathExtension == "log" {
             guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            // Bail before splitting if the file doesn't contain the
+            // needle at all (one case-insensitive scan beats lowercasing
+            // the whole file twice + splitting the haystack).
+            if text.range(of: query, options: [.caseInsensitive]) == nil { continue }
             let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
             for (idx, line) in lines.enumerated() {
-                if line.lowercased().contains(needle) {
+                if line.range(of: query, options: [.caseInsensitive]) != nil {
                     let session = sessionsByPath[url.path]
                     hits.append(Hit(
                         id: "transcript:\(url.lastPathComponent):\(idx)",
@@ -178,60 +181,101 @@ public actor SearchService {
     // MARK: - Code
 
     private func searchCode(query: String, projects: [Project]) async -> [Hit] {
+        // Run git-grep across every project in parallel; each subprocess
+        // is independent, and a single slow repo no longer blocks the
+        // other results.
         var hits: [Hit] = []
-        for project in projects {
-            let project = project
-            let projectHits = await runGitGrep(query: query, in: project)
-            hits.append(contentsOf: projectHits)
-            if hits.count >= limitPerSource { break }
+        await withTaskGroup(of: [Hit].self) { group in
+            let exec = self.gitExecutable
+            let limit = self.limitPerSource
+            for project in projects {
+                group.addTask {
+                    await Self.runGitGrep(query: query, in: project, gitExecutable: exec, limit: limit)
+                }
+            }
+            for await projectHits in group {
+                hits.append(contentsOf: projectHits)
+                if hits.count >= limitPerSource { group.cancelAll(); break }
+            }
         }
         return Array(hits.prefix(limitPerSource))
     }
 
-    private func runGitGrep(query: String, in project: Project) async -> [Hit] {
+    private static func runGitGrep(
+        query: String,
+        in project: Project,
+        gitExecutable: String,
+        limit: Int
+    ) async -> [Hit] {
         let directory = URL(fileURLWithPath: project.localPath)
         guard FileManager.default.fileExists(atPath: directory.appendingPathComponent(".git").path) else {
             return []
         }
-        let exec = self.gitExecutable
         let projectId = project.id
-        let limit = limitPerSource
-        return await Task.detached {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: exec)
-            // -n line numbers, -I skip binary, -F fixed strings, --max-count
-            // per file, -i case-insensitive.
-            process.arguments = ["grep", "-n", "-I", "-F", "-i",
-                                 "--max-count=\(limit)", "--", query]
-            process.currentDirectoryURL = directory
-            let out = Pipe()
-            let err = Pipe()
-            process.standardOutput = out
-            process.standardError = err
-            do { try process.run() } catch { return [] }
-            process.waitUntilExit()
-            let data = (try? out.fileHandleForReading.readToEnd()) ?? Data()
-            let text = String(decoding: data, as: UTF8.self)
-            var hits: [Hit] = []
-            for line in text.split(separator: "\n") {
-                // Format: "<path>:<line>:<text>"
-                let parts = line.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
-                guard parts.count == 3, let lineNumber = Int(parts[1]) else { continue }
-                let path = String(parts[0])
-                let snippet = String(parts[2])
-                hits.append(Hit(
-                    id: "code:\(projectId):\(path):\(lineNumber)",
-                    source: .code,
-                    title: path,
-                    snippet: snippet.trimmingCharacters(in: .whitespaces),
-                    path: directory.appendingPathComponent(path).path,
-                    line: lineNumber,
-                    projectId: projectId,
-                    sessionId: nil
-                ))
-                if hits.count >= limit { break }
-            }
-            return hits
-        }.value
+        // Hold the Process in a Sendable box so onCancel can terminate
+        // it from the cancellation handler. A fresh keystroke (which
+        // cancels the parent search Task) now kills the subprocess
+        // instead of letting it finish into the void.
+        let processBox = ProcessBox()
+        return await withTaskCancellationHandler {
+            await Task.detached {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: gitExecutable)
+                process.arguments = ["grep", "-n", "-I", "-F", "-i",
+                                     "--max-count=\(limit)", "--", query]
+                process.currentDirectoryURL = directory
+                let out = Pipe()
+                let err = Pipe()
+                process.standardOutput = out
+                process.standardError = err
+                processBox.set(process)
+                do { try process.run() } catch { return [] }
+                process.waitUntilExit()
+                let data = (try? out.fileHandleForReading.readToEnd()) ?? Data()
+                let text = String(decoding: data, as: UTF8.self)
+                var hits: [Hit] = []
+                for line in text.split(separator: "\n") {
+                    // Format: "<path>:<line>:<text>"
+                    let parts = line.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+                    guard parts.count == 3, let lineNumber = Int(parts[1]) else { continue }
+                    let path = String(parts[0])
+                    let snippet = String(parts[2])
+                    hits.append(Hit(
+                        id: "code:\(projectId):\(path):\(lineNumber)",
+                        source: .code,
+                        title: path,
+                        snippet: snippet.trimmingCharacters(in: .whitespaces),
+                        path: directory.appendingPathComponent(path).path,
+                        line: lineNumber,
+                        projectId: projectId,
+                        sessionId: nil
+                    ))
+                    if hits.count >= limit { break }
+                }
+                return hits
+            }.value
+        } onCancel: {
+            processBox.terminate()
+        }
+    }
+}
+
+/// Sendable mailbox so `onCancel` can reach across to a detached Task's
+/// Process and call `terminate()`. NSLock-guarded; assignments are rare
+/// (one per subprocess).
+private final class ProcessBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+
+    func set(_ p: Process) {
+        lock.lock(); defer { lock.unlock() }
+        process = p
+    }
+
+    func terminate() {
+        lock.lock()
+        let p = process
+        lock.unlock()
+        if let p, p.isRunning { p.terminate() }
     }
 }

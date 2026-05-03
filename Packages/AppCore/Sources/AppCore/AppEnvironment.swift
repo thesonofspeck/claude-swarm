@@ -87,6 +87,7 @@ public final class AppEnvironment: ObservableObject {
         )
         self.sessionManager = manager
         self.projectList = ProjectListViewModel(
+            database: db,
             projects: projects,
             sessions: sessionsRepo,
             manager: manager

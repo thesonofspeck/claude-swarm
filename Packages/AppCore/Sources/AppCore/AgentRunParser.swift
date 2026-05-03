@@ -54,6 +54,25 @@ public struct AgentRun: Identifiable, Equatable, Sendable {
 public enum AgentRunParser {
     private static let log = Logger(subsystem: "com.claudeswarm", category: "agent-run-parser")
 
+    // Compile regexes once. Building NSRegularExpression on every parse
+    // (six per call previously) was a measurable chunk of the cost.
+    private static let boundarySubagentRegex: NSRegularExpression? =
+        try? NSRegularExpression(pattern: #"(?i)subagent:\s*\S+"#)
+    private static let agentNameTaskRegex: NSRegularExpression? =
+        try? NSRegularExpression(pattern: #"Task\((["']?)([^"')]+)\1\)"#)
+    private static let agentNameSubRegex: NSRegularExpression? =
+        try? NSRegularExpression(pattern: #"(?i)subagent:\s*([\w-]+)"#)
+    private static let promptRegex: NSRegularExpression? =
+        try? NSRegularExpression(pattern: #"(?ims)prompt:\s*"?(.+?)"?\n"#)
+    private static let resultRegex: NSRegularExpression? =
+        try? NSRegularExpression(pattern: #"(?ims)result:\s*(.+?)(?:\n\n|$)"#)
+    private static let failedRegex: NSRegularExpression? =
+        try? NSRegularExpression(pattern: #"(?i)\b(failed|error)\b"#)
+    private static let succeededRegex: NSRegularExpression? =
+        try? NSRegularExpression(pattern: #"(?i)\b(succeeded|done|complete)\b"#)
+    private static let sessionEndedRegex: NSRegularExpression? =
+        try? NSRegularExpression(pattern: #"(?i)session\s*(ended|finished)"#)
+
     /// Parses a transcript file. Returns the root run (always team-lead in
     /// the bundled agent set, but other primary agents map to their own
     /// roots) plus discovered children. On unparseable input returns a
@@ -70,79 +89,83 @@ public enum AgentRunParser {
     }
 
     public static func parse(raw: String) -> AgentRun {
+        // Split once, reuse the substrings for both children and the
+        // root prompt extraction.
         let blocks = splitIntoBlocks(raw)
         var children: [AgentRun] = []
+        var rootPrompt: String?
         for block in blocks {
             if let run = runFromBlock(block) {
                 children.append(run)
+            } else if rootPrompt == nil {
+                let trimmed = block.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { rootPrompt = String(trimmed.prefix(500)) }
             }
         }
-        let root = AgentRun(
+        return AgentRun(
             agent: "team-lead",
-            prompt: extractRootPrompt(raw),
+            prompt: rootPrompt,
             summary: extractRootSummary(raw),
             status: rootStatus(raw),
             startedAt: nil,
             endedAt: nil,
             children: children
         )
-        return root
     }
 
     // MARK: - Heuristic recognizers
 
     /// The transcript stream punctuates each subagent invocation with a
-    /// recognizable header line — we split on those.
-    static func splitIntoBlocks(_ raw: String) -> [String] {
-        // Pattern: a line containing "Task(<agent>)" or "→ subagent: <name>".
-        // Both appear in current Claude Code output for delegations.
-        let lines = raw.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        var blocks: [String] = []
-        var current: [String] = []
-        for line in lines {
-            if isAgentBoundary(line), !current.isEmpty {
-                blocks.append(current.joined(separator: "\n"))
-                current = [line]
-            } else {
-                current.append(line)
+    /// recognizable header line — we split on those. Walks substrings
+    /// to avoid the previous "split → map(String.init) → join → split
+    /// again" allocation chain.
+    static func splitIntoBlocks(_ raw: String) -> [Substring] {
+        var blocks: [Substring] = []
+        var blockStart = raw.startIndex
+        var lineStart = raw.startIndex
+        var seenBoundary = false
+        let end = raw.endIndex
+        while lineStart < end {
+            let lineEnd = raw[lineStart..<end].firstIndex(of: "\n") ?? end
+            let line = raw[lineStart..<lineEnd]
+            if isAgentBoundary(line) {
+                if seenBoundary || lineStart > blockStart {
+                    blocks.append(raw[blockStart..<lineStart])
+                    blockStart = lineStart
+                }
+                seenBoundary = true
             }
+            lineStart = lineEnd < end ? raw.index(after: lineEnd) : end
         }
-        if !current.isEmpty { blocks.append(current.joined(separator: "\n")) }
+        if blockStart < end {
+            blocks.append(raw[blockStart..<end])
+        }
         return blocks
     }
 
-    static func isAgentBoundary(_ line: String) -> Bool {
-        line.contains("Task(") || line.range(of: #"(?i)subagent:\s*\S+"#, options: .regularExpression) != nil
+    static func isAgentBoundary<S: StringProtocol>(_ line: S) -> Bool {
+        if line.contains("Task(") { return true }
+        let s = String(line)
+        let range = NSRange(s.startIndex..<s.endIndex, in: s)
+        return boundarySubagentRegex?.firstMatch(in: s, range: range) != nil
     }
 
-    private static func runFromBlock(_ block: String) -> AgentRun? {
-        guard let agent = extractAgentName(block) else { return nil }
-        let prompt = firstMatch(in: block, pattern: #"(?ims)prompt:\s*"?(.+?)"?\n"#)
-        let summary = firstMatch(in: block, pattern: #"(?ims)result:\s*(.+?)(?:\n\n|$)"#)
+    private static func runFromBlock(_ block: Substring) -> AgentRun? {
+        let blockStr = String(block)
+        guard let agent = extractAgentName(blockStr) else { return nil }
+        let prompt = firstMatch(blockStr, regex: promptRegex)
+        let summary = firstMatch(blockStr, regex: resultRegex)
         let status: AgentRun.Status = {
-            if block.range(of: #"(?i)\b(failed|error)\b"#, options: .regularExpression) != nil { return .failed }
-            if block.range(of: #"(?i)\b(succeeded|done|complete)\b"#, options: .regularExpression) != nil { return .succeeded }
+            if matches(blockStr, regex: failedRegex) { return .failed }
+            if matches(blockStr, regex: succeededRegex) { return .succeeded }
             return .running
         }()
         return AgentRun(agent: agent, prompt: prompt, summary: summary, status: status)
     }
 
     static func extractAgentName(_ block: String) -> String? {
-        if let m = firstMatch(in: block, pattern: #"Task\((["']?)([^"')]+)\1\)"#, group: 2) { return m }
-        if let m = firstMatch(in: block, pattern: #"(?i)subagent:\s*([\w-]+)"#) { return m }
-        return nil
-    }
-
-    private static func extractRootPrompt(_ raw: String) -> String? {
-        // The seeded prompt is usually the first non-empty paragraph the
-        // user provides. We grab the first ≤500 chars of the transcript
-        // before the first agent boundary.
-        for block in splitIntoBlocks(raw) where !isAgentBoundary(block.split(separator: "\n").first.map(String.init) ?? "") {
-            let trimmed = block.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                return String(trimmed.prefix(500))
-            }
-        }
+        if let m = firstMatch(block, regex: agentNameTaskRegex, group: 2) { return m }
+        if let m = firstMatch(block, regex: agentNameSubRegex) { return m }
         return nil
     }
 
@@ -153,18 +176,23 @@ public enum AgentRunParser {
     }
 
     private static func rootStatus(_ raw: String) -> AgentRun.Status {
-        if raw.range(of: #"(?i)session\s*(ended|finished)"#, options: .regularExpression) != nil { return .succeeded }
-        if raw.range(of: #"(?i)\bfatal\b|\berror\b"#, options: .regularExpression) != nil { return .running }
+        if matches(raw, regex: sessionEndedRegex) { return .succeeded }
         return .running
     }
 
-    static func firstMatch(in text: String, pattern: String, group: Int = 1) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+    private static func firstMatch(_ text: String, regex: NSRegularExpression?, group: Int = 1) -> String? {
+        guard let regex else { return nil }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = regex.firstMatch(in: text, options: [], range: range),
+        guard let match = regex.firstMatch(in: text, range: range),
               match.numberOfRanges > group,
               let r = Range(match.range(at: group), in: text)
         else { return nil }
         return String(text[r]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func matches(_ text: String, regex: NSRegularExpression?) -> Bool {
+        guard let regex else { return false }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.firstMatch(in: text, range: range) != nil
     }
 }
