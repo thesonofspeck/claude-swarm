@@ -3,7 +3,7 @@ import AppCore
 import PersistenceKit
 
 struct ClaudeMdTab: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     let project: Project?
 
     @State private var content: String = ""

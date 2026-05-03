@@ -1,14 +1,16 @@
 import Foundation
+import Observation
 import Combine
 import GRDB
 import PersistenceKit
 import SessionCore
 
 @MainActor
-public final class ProjectListViewModel: ObservableObject {
-    @Published public private(set) var projects: [Project] = []
-    @Published public private(set) var sessionsByProject: [String: [Session]] = [:]
-    @Published public var error: String?
+@Observable
+public final class ProjectListViewModel {
+    public private(set) var projects: [Project] = []
+    public private(set) var sessionsByProject: [String: [Session]] = [:]
+    public var error: String?
 
     private let database: Database
     private let projectsRepo: ProjectRepository

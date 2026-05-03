@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import SwiftUI
 import PersistenceKit
 import GitHubKit
@@ -14,7 +15,8 @@ import os
 /// aren't persisted as a separate table — review threads + CI runs are
 /// derived from `gh` per refresh and merged with the activity log.
 @MainActor
-public final class InboxFeed: ObservableObject {
+@Observable
+public final class InboxFeed {
 
     public enum Kind: String, Sendable, Equatable, CaseIterable {
         case needsInput
@@ -49,9 +51,9 @@ public final class InboxFeed: ObservableObject {
         public let unread: Bool
     }
 
-    @Published public private(set) var items: [Item] = []
-    @Published public private(set) var refreshing: Bool = false
-    @Published public private(set) var lastRefreshedAt: Date?
+    public private(set) var items: [Item] = []
+    public private(set) var refreshing: Bool = false
+    public private(set) var lastRefreshedAt: Date?
 
     public var refreshInterval: TimeInterval = 5 * 60
     private var lastFetchByProject: [String: Date] = [:]

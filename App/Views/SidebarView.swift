@@ -5,9 +5,9 @@ import ClaudeSwarmNotifications
 import GitKit
 
 struct SidebarView: View {
-    @EnvironmentObject var env: AppEnvironment
-    @EnvironmentObject var projectList: ProjectListViewModel
-    @EnvironmentObject var notifier: Notifier
+    @Environment(AppEnvironment.self) private var env
+    @Environment(ProjectListViewModel.self) private var projectList
+    @Environment(Notifier.self) private var notifier
     @Binding var selectedSession: Session?
     @Binding var newSessionProjectId: String?
     @State private var showingAddProject = false
@@ -80,10 +80,10 @@ struct SidebarView: View {
         .background(Palette.bgSidebar)
         .onDrop(of: [.fileURL], delegate: ProjectDropDelegate(showSheet: $showingAddProject, sheetPath: $droppedPath))
         .sheet(isPresented: $showingAddProject) {
-            AddProjectSheet(initialPath: droppedPath).environmentObject(env)
+            AddProjectSheet(initialPath: droppedPath).environment(env)
         }
         .sheet(isPresented: $showingSettings) {
-            SettingsSheet().environmentObject(env)
+            SettingsSheet().environment(env)
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
@@ -246,8 +246,8 @@ struct ProjectInitial: View {
 }
 
 struct AddProjectSheet: View {
-    @EnvironmentObject var env: AppEnvironment
-    @EnvironmentObject var projectList: ProjectListViewModel
+    @Environment(AppEnvironment.self) private var env
+    @Environment(ProjectListViewModel.self) private var projectList
     @Environment(\.dismiss) private var dismiss
     var initialPath: String? = nil
     @State private var name = ""

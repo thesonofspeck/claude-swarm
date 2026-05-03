@@ -8,7 +8,7 @@ import SessionCore
 /// are gone — and lets the user remove them one at a time or all at
 /// once. Read-only by default; nothing is mutated until the user clicks.
 struct WorktreeJanitorSheet: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
 
     @State private var inspection: WorktreeJanitor.Inspection?

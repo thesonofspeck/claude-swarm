@@ -3,9 +3,9 @@ import AppCore
 import PersistenceKit
 
 struct NewSessionSheet: View {
-    @EnvironmentObject var env: AppEnvironment
-    @EnvironmentObject var projectList: ProjectListViewModel
-    @EnvironmentObject var registry: RunningSessionRegistry
+    @Environment(AppEnvironment.self) private var env
+    @Environment(ProjectListViewModel.self) private var projectList
+    @Environment(RunningSessionRegistry.self) private var registry
     @Environment(\.dismiss) private var dismiss
 
     /// Pre-selected project (e.g. when launched with a session already in

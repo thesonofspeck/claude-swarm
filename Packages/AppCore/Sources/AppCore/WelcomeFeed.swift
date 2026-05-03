@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import SwiftUI
 import PersistenceKit
 import WrikeKit
@@ -10,7 +11,8 @@ import os
 /// background per project on a 5-minute staleness window. Views observe
 /// the `@Published` slices and rerender when each rail's data lands.
 @MainActor
-public final class WelcomeFeed: ObservableObject {
+@Observable
+public final class WelcomeFeed {
 
     public struct TaskRow: Identifiable, Equatable, Sendable {
         public let project: Project
@@ -30,12 +32,12 @@ public final class WelcomeFeed: ObservableObject {
         public var id: String { session.id }
     }
 
-    @Published public private(set) var recentSessions: [SessionRow] = []
-    @Published public private(set) var tasks: [TaskRow] = []
-    @Published public private(set) var prs: [PRRow] = []
-    @Published public private(set) var refreshingTasks: Bool = false
-    @Published public private(set) var refreshingPRs: Bool = false
-    @Published public private(set) var lastRefreshedAt: Date?
+    public private(set) var recentSessions: [SessionRow] = []
+    public private(set) var tasks: [TaskRow] = []
+    public private(set) var prs: [PRRow] = []
+    public private(set) var refreshingTasks: Bool = false
+    public private(set) var refreshingPRs: Bool = false
+    public private(set) var lastRefreshedAt: Date?
 
     private let projects: ProjectRepository
     private let sessionsRepo: SessionRepository

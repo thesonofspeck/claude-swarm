@@ -6,7 +6,7 @@ import BrewInstaller
 import UniformTypeIdentifiers
 
 struct OnboardingSheet: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
 
     @State private var step: Step = .welcome
@@ -64,7 +64,7 @@ struct OnboardingSheet: View {
         switch step {
         case .welcome: welcome
         case .tools: ToolsStep(onContinue: { withAnimation(Motion.spring) { step = .wrike } })
-                        .environmentObject(env)
+                        .environment(env)
         case .wrike: wrike
         case .github: github
         case .done: done
@@ -221,7 +221,7 @@ struct OnboardingSheet: View {
 // MARK: - Tools step
 
 struct ToolsStep: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     let onContinue: () -> Void
 
     @State private var statuses: [ToolStatus] = []

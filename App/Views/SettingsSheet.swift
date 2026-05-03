@@ -6,7 +6,7 @@ import ApnsClient
 import PairingProtocol
 
 struct SettingsSheet: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
 
     @State private var wrikeToken: String = ""
@@ -53,7 +53,7 @@ struct SettingsSheet: View {
         Form {
             Section("Tools") {
                 ToolsStep(onContinue: {})
-                    .environmentObject(env)
+                    .environment(env)
                     .frame(minHeight: 360)
             }
             Section("Defaults") {
@@ -204,7 +204,7 @@ struct SettingsSheet: View {
         .formStyle(.grouped)
         .task { reloadQuietHours() }
         .sheet(isPresented: $showPairingSheet) {
-            PairingSheet().environmentObject(env)
+            PairingSheet().environment(env)
         }
     }
 
@@ -239,12 +239,12 @@ struct SettingsSheet: View {
 
     private var diagnosticsTab: some View {
         DiagnosticsView()
-            .environmentObject(env)
+            .environment(env)
     }
 
     private var activityTab: some View {
         ActivityFeedView()
-            .environmentObject(env)
+            .environment(env)
     }
 
     @State private var llmEnabled: Bool = false

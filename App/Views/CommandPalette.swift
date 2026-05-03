@@ -3,8 +3,8 @@ import AppCore
 import PersistenceKit
 
 struct CommandPalette: View {
-    @EnvironmentObject var env: AppEnvironment
-    @EnvironmentObject var projectList: ProjectListViewModel
+    @Environment(AppEnvironment.self) private var env
+    @Environment(ProjectListViewModel.self) private var projectList
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedSession: Session?
 

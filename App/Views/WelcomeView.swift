@@ -10,9 +10,9 @@ import GitHubKit
 /// search that filters the rails in place. Hydrates instantly from the
 /// CachedTask + CachedPR tables; refreshes per-project in the background.
 struct WelcomeView: View {
-    @EnvironmentObject var env: AppEnvironment
-    @EnvironmentObject var registry: RunningSessionRegistry
-    @ObservedObject var feed: WelcomeFeed
+    @Environment(AppEnvironment.self) private var env
+    @Environment(RunningSessionRegistry.self) private var registry
+    @Bindable var feed: WelcomeFeed
     @Binding var selectedSession: Session?
     @Binding var newSessionProjectId: String?
     @State private var query: String = ""
@@ -79,8 +79,8 @@ struct WelcomeView: View {
             WelcomeStartSessionSheet(row: row) {
                 pendingTask = nil
             }
-            .environmentObject(env)
-            .environmentObject(registry)
+            .environment(env)
+            .environment(registry)
         }
     }
 
@@ -301,8 +301,8 @@ struct WelcomeView: View {
 /// how to spin up a session from a Welcome card without dragging the
 /// caller through TasksTab.
 private struct WelcomeStartSessionSheet: View {
-    @EnvironmentObject var env: AppEnvironment
-    @EnvironmentObject var registry: RunningSessionRegistry
+    @Environment(AppEnvironment.self) private var env
+    @Environment(RunningSessionRegistry.self) private var registry
     let row: WelcomeFeed.TaskRow
     let onDone: () -> Void
 

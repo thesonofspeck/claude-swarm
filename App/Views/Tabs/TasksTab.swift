@@ -4,8 +4,8 @@ import PersistenceKit
 import WrikeKit
 
 struct TasksTab: View {
-    @EnvironmentObject var env: AppEnvironment
-    @EnvironmentObject var registry: RunningSessionRegistry
+    @Environment(AppEnvironment.self) private var env
+    @Environment(RunningSessionRegistry.self) private var registry
     let session: Session?
     let project: Project?
 
@@ -240,7 +240,7 @@ struct TasksTab: View {
             }
             .sheet(isPresented: $showNewTask) {
                 if let project {
-                    NewWrikeTaskSheet(project: project).environmentObject(env)
+                    NewWrikeTaskSheet(project: project).environment(env)
                 }
             }
         }

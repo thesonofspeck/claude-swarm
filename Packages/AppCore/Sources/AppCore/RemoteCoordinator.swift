@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import KeychainKit
 import PersistenceKit
 import PairingProtocol
@@ -17,11 +18,12 @@ import ClaudeSwarmNotifications
 /// them out to live WebSocket clients and to APNs, and dispatches
 /// inbound commands back into the app (approvals, session input).
 @MainActor
-public final class RemoteCoordinator: ObservableObject {
-    @Published public private(set) var pairedDevices: [PairRecord] = []
-    @Published public private(set) var liveDeviceIds: Set<String> = []
-    @Published public var pushConfig: PushBackendConfig
-    @Published public private(set) var sleepGuardHeld: Bool = false
+@Observable
+public final class RemoteCoordinator {
+    public private(set) var pairedDevices: [PairRecord] = []
+    public private(set) var liveDeviceIds: Set<String> = []
+    public var pushConfig: PushBackendConfig
+    public private(set) var sleepGuardHeld: Bool = false
 
     public var apnsConfig: ApnsConfig {
         get { pushConfig.direct }

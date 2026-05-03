@@ -4,7 +4,7 @@ import LibraryKit
 import PersistenceKit
 
 struct LibraryTab: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     let project: Project?
 
     @State private var view: LibraryView = LibraryView(rows: [], teamManifest: nil, teamError: nil)
@@ -52,7 +52,7 @@ struct LibraryTab: View {
             }
         }
         .sheet(isPresented: $showSettings) {
-            TeamLibrarySettingsSheet().environmentObject(env)
+            TeamLibrarySettingsSheet().environment(env)
         }
     }
 
@@ -259,7 +259,7 @@ struct LibraryTab: View {
 }
 
 struct TeamLibrarySettingsSheet: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
 
     @State private var transport: Transport = .git

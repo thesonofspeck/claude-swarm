@@ -6,7 +6,7 @@ import PersistenceKit
 /// other Task-tool delegations) for the active session. Auto-refreshes
 /// when the transcript file changes via the workspace pulse.
 struct AgentRunTab: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     let session: Session
     @State private var root: AgentRun?
     @State private var loading = true

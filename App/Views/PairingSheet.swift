@@ -7,7 +7,7 @@ import CoreImage.CIFilterBuiltins
 #endif
 
 struct PairingSheet: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
 
     @State private var invite: PairingInvite?

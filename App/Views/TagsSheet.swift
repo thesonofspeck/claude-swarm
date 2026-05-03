@@ -4,7 +4,7 @@ import GitKit
 
 struct TagsSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject var workspace: GitWorkspace
+    @Bindable var workspace: GitWorkspace
     @State private var showCreate = false
 
     var body: some View {

@@ -4,7 +4,7 @@ import AgentBootstrap
 import PersistenceKit
 
 struct AgentsTab: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     let project: Project?
 
     @State private var selectedAgent: String = "team-lead"

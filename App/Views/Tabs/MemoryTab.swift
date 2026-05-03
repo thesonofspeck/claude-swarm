@@ -4,7 +4,7 @@ import PersistenceKit
 import MemoryService
 
 struct MemoryTab: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     let project: Project?
     let session: Session?
 

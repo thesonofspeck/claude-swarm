@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 #if canImport(UserNotifications)
 import UserNotifications
 #endif
@@ -7,8 +8,9 @@ import AppKit
 #endif
 
 @MainActor
-public final class Notifier: ObservableObject {
-    @Published public private(set) var pendingSessionIds: Set<String> = []
+@Observable
+public final class Notifier {
+    public private(set) var pendingSessionIds: Set<String> = []
 
     public init() {}
 

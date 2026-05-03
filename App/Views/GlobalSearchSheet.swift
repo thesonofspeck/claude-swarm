@@ -7,7 +7,7 @@ import PersistenceKit
 /// to either jump to its session (transcript hits) or open the file in
 /// Finder (memory + code hits).
 struct GlobalSearchSheet: View {
-    @EnvironmentObject var env: AppEnvironment
+    @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedSession: Session?
 

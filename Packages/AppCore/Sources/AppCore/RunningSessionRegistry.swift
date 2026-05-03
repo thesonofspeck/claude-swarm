@@ -1,11 +1,13 @@
 import Foundation
+import Observation
 import SessionCore
 import PersistenceKit
 
 @MainActor
-public final class RunningSessionRegistry: ObservableObject {
-    @Published public private(set) var specs: [String: SessionSpec] = [:]
-    @Published public private(set) var foregroundSessionId: String?
+@Observable
+public final class RunningSessionRegistry {
+    public private(set) var specs: [String: SessionSpec] = [:]
+    public private(set) var foregroundSessionId: String?
 
     public init() {}
 

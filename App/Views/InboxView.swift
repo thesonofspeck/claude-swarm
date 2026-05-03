@@ -6,8 +6,8 @@ import PersistenceKit
 /// that needs the user's attention. Click an item to jump to the matching
 /// session or open the PR in the browser.
 struct InboxView: View {
-    @EnvironmentObject var env: AppEnvironment
-    @ObservedObject var feed: InboxFeed
+    @Environment(AppEnvironment.self) private var env
+    @Bindable var feed: InboxFeed
     @Binding var selectedSession: Session?
     @State private var enabledKinds: Set<InboxFeed.Kind> = Set(InboxFeed.Kind.allCases)
 
