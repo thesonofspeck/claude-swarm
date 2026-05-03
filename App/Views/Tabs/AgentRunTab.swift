@@ -46,49 +46,48 @@ struct AgentRunTab: View {
     @ViewBuilder
     private func content(_ root: AgentRun) -> some View {
         HSplitView {
-            List(selection: $selectedRunId) {
-                Section("Run") {
-                    runRow(root, depth: 0)
-                    ForEach(root.children) { child in
-                        runRow(child, depth: 1)
+            // SwiftUI Table — sortable columns, native macOS row selection,
+            // right-click "Copy" support for free.
+            Table([root] + root.children, selection: $selectedRunId) {
+                TableColumn("Agent") { run in
+                    Label {
+                        Text(run.agent)
+                            .foregroundStyle(Palette.fgBright)
+                    } icon: {
+                        Image(systemName: agentIcon(run.agent))
+                            .foregroundStyle(agentTint(run.agent))
                     }
                 }
-            }
-            .scrollContentBackground(.hidden)
-            .background(Palette.bgBase)
-            .frame(minWidth: 320)
+                .width(min: 140, ideal: 160)
 
-            detailPane
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Palette.bgBase)
-        }
-    }
+                TableColumn("Status") { run in
+                    Pill(text: run.status.rawValue, tint: statusTint(run.status))
+                }
+                .width(80)
 
-    private func runRow(_ run: AgentRun, depth: Int) -> some View {
-        HStack(spacing: Metrics.Space.sm) {
-            ForEach(0..<depth, id: \.self) { _ in
-                Rectangle().fill(Palette.divider).frame(width: 1)
-            }
-            Image(systemName: agentIcon(run.agent))
-                .foregroundStyle(agentTint(run.agent))
-                .frame(width: 18)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(run.agent)
-                    .font(Type.body)
-                    .foregroundStyle(Palette.fgBright)
-                if let prompt = run.prompt {
-                    Text(prompt)
+                TableColumn("Duration") { run in
+                    Text(run.duration.map { "\(Int($0))s" } ?? "—")
+                        .font(Type.monoCaption)
+                        .foregroundStyle(Palette.fgMuted)
+                }
+                .width(70)
+
+                TableColumn("Prompt") { run in
+                    Text(run.prompt ?? "")
                         .font(Type.caption)
                         .foregroundStyle(Palette.fgMuted)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
             }
-            Spacer()
-            Pill(text: run.status.rawValue, tint: statusTint(run.status))
+            .scrollContentBackground(.hidden)
+            .background(Palette.bgBase)
+            .frame(minWidth: 480)
+
+            detailPane
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Palette.bgBase)
         }
-        .padding(.vertical, 2)
-        .tag(Optional(run.id))
     }
 
     @ViewBuilder
