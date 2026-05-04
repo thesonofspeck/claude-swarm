@@ -256,6 +256,8 @@ struct AddProjectSheet: View {
     @State private var wrikeFolder = ""
     @State private var githubOwner = ""
     @State private var githubRepo = ""
+    @State private var kubeContext = ""
+    @State private var kubeNamespace = ""
     @State private var creating = false
     @State private var error: String?
     @State private var detectedRepo: String?
@@ -280,12 +282,16 @@ struct AddProjectSheet: View {
             Section("Wrike") {
                 TextField("Folder ID (optional)", text: $wrikeFolder)
             }
+            Section("Kubernetes (optional)") {
+                TextField("kubectl context", text: $kubeContext, prompt: Text("e.g. arn:aws:eks:us-east-1:…:cluster/prod"))
+                TextField("Default namespace", text: $kubeNamespace, prompt: Text("default"))
+            }
             if let error {
                 Section { Text(error).foregroundStyle(Palette.red) }
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 460)
+        .frame(width: 520, height: 580)
         .onAppear {
             if let initialPath, path.isEmpty {
                 path = initialPath
@@ -310,7 +316,9 @@ struct AddProjectSheet: View {
                             name: name, path: path, baseBranch: baseBranch,
                             wrikeFolder: wrikeFolder.isEmpty ? nil : wrikeFolder,
                             githubOwner: githubOwner.isEmpty ? nil : githubOwner,
-                            githubRepo: githubRepo.isEmpty ? nil : githubRepo
+                            githubRepo: githubRepo.isEmpty ? nil : githubRepo,
+                            kubeContext: kubeContext.isEmpty ? nil : kubeContext,
+                            kubeNamespace: kubeNamespace.isEmpty ? nil : kubeNamespace
                         )
                         creating = false
                         if projectList.error == nil { dismiss() }

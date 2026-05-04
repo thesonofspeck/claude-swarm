@@ -9,6 +9,13 @@ public struct Project: Codable, Identifiable, Equatable, Hashable, Sendable, Fet
     public var wrikeFolderId: String?
     public var githubOwner: String?
     public var githubRepo: String?
+    /// kubectl context for `Deploy` tab — typically the EKS context
+    /// produced by `aws eks update-kubeconfig`. Optional; absence hides
+    /// the Deploy tab.
+    public var kubeContext: String?
+    /// Default namespace scoped to this project. `nil` means whatever
+    /// the context's current namespace is (or `default`).
+    public var kubeNamespace: String?
     public var createdAt: Date
 
     public static let databaseTableName = "project"
@@ -21,6 +28,8 @@ public struct Project: Codable, Identifiable, Equatable, Hashable, Sendable, Fet
         wrikeFolderId: String? = nil,
         githubOwner: String? = nil,
         githubRepo: String? = nil,
+        kubeContext: String? = nil,
+        kubeNamespace: String? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
@@ -30,6 +39,8 @@ public struct Project: Codable, Identifiable, Equatable, Hashable, Sendable, Fet
         self.wrikeFolderId = wrikeFolderId
         self.githubOwner = githubOwner
         self.githubRepo = githubRepo
+        self.kubeContext = kubeContext
+        self.kubeNamespace = kubeNamespace
         self.createdAt = createdAt
     }
 }

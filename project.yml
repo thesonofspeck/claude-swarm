@@ -34,6 +34,7 @@ packages:
   BrewInstaller:     { path: Packages/BrewInstaller }
   LibraryKit:        { path: Packages/LibraryKit }
   AtomPalette:       { path: Packages/AtomPalette }
+  KubectlKit:        { path: Packages/KubectlKit }
 
 targets:
   ClaudeSwarm:
@@ -103,3 +104,5 @@ targets:
         product: LibraryKit
       - package: AtomPalette
         product: AtomPalette
+      - package: KubectlKit
+        product: KubectlKit

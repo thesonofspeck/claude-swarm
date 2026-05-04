@@ -12,6 +12,7 @@ import MemoryService
 import ClaudeSwarmNotifications
 import AgentBootstrap
 import PairingProtocol
+import KubectlKit
 
 @MainActor
 @Observable
@@ -39,6 +40,10 @@ public final class AppEnvironment {
     public let library: LibraryStore
     public let activity: ActivityLog
     public let worktreeJanitor: WorktreeJanitor
+    /// Façade over the user's `kubectl` for the Deploy tab. Reuses
+    /// whatever `~/.kube/config` already points at (typically configured
+    /// via `aws eks update-kubeconfig`).
+    public let kubectl: KubectlClient
     /// Implicitly-unwrapped because it's assigned after all the other
     /// stored properties — its closure captures `self`, which Swift 6
     /// will only allow once every other `let` property is initialized.
@@ -107,6 +112,7 @@ public final class AppEnvironment {
         let libSource = TeamLibrarySource(cacheRoot: libraryCache)
         self.library = LibraryStore(teamSource: libSource)
         self.activity = ActivityLog(db: db)
+        self.kubectl = KubectlClient()
         self.welcomeFeed = WelcomeFeed(
             projects: projects,
             sessionsRepo: sessionsRepo,

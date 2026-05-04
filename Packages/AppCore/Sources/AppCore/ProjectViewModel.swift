@@ -57,7 +57,9 @@ public final class ProjectListViewModel {
         baseBranch: String,
         wrikeFolder: String?,
         githubOwner: String? = nil,
-        githubRepo: String? = nil
+        githubRepo: String? = nil,
+        kubeContext: String? = nil,
+        kubeNamespace: String? = nil
     ) async {
         do {
             let project = Project(
@@ -66,10 +68,27 @@ public final class ProjectListViewModel {
                 defaultBaseBranch: baseBranch,
                 wrikeFolderId: wrikeFolder,
                 githubOwner: githubOwner?.isEmpty == false ? githubOwner : nil,
-                githubRepo: githubRepo?.isEmpty == false ? githubRepo : nil
+                githubRepo: githubRepo?.isEmpty == false ? githubRepo : nil,
+                kubeContext: kubeContext?.isEmpty == false ? kubeContext : nil,
+                kubeNamespace: kubeNamespace?.isEmpty == false ? kubeNamespace : nil
             )
             try projectsRepo.upsert(project)
             try await manager.bootstrap(project: project)
+            reload()
+        } catch {
+            self.error = "\(error)"
+        }
+    }
+
+    /// Update the kubectl bindings on an existing project. The Deploy
+    /// tab's empty state lets the user pick a context without
+    /// re-registering the whole project.
+    public func updateKubeBinding(projectId: String, context: String?, namespace: String?) {
+        do {
+            guard var p = try projectsRepo.find(id: projectId) else { return }
+            p.kubeContext = (context?.isEmpty == false) ? context : nil
+            p.kubeNamespace = (namespace?.isEmpty == false) ? namespace : nil
+            try projectsRepo.upsert(p)
             reload()
         } catch {
             self.error = "\(error)"
@@ -108,17 +127,21 @@ public final class ProjectListViewModel {
                 group.addTask {
                     do {
                         for try await rows in projectsObs.values(in: pool) {
-                            self?.projects = rows                        }
+                            self?.projects = rows
+                        }
                     } catch {
-                        self?.error = "\(error)"                    }
+                        self?.error = "\(error)"
+                    }
                 }
                 group.addTask {
                     do {
                         for try await rows in sessionsObs.values(in: pool) {
                             let grouped = Dictionary(grouping: rows, by: \.projectId)
-                            self?.sessionsByProject = grouped                        }
+                            self?.sessionsByProject = grouped
+                        }
                     } catch {
-                        self?.error = "\(error)"                    }
+                        self?.error = "\(error)"
+                    }
                 }
             }
         }

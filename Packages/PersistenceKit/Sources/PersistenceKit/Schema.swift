@@ -83,5 +83,14 @@ public enum Schema {
             try db.create(index: "idx_task_cache_projectId", on: "task_cache", columns: ["projectId"])
             try db.create(index: "idx_pr_cache_owner_repo", on: "pr_cache", columns: ["owner", "repo"])
         }
+
+        // v4 — kubectl context fields on `project` for the Deploy tab.
+        // Both nullable; absence hides Deploy in the detail bar.
+        migrator.registerMigration("v4_kube") { db in
+            try db.alter(table: "project") { t in
+                t.add(column: "kubeContext", .text)
+                t.add(column: "kubeNamespace", .text)
+            }
+        }
     }
 }
