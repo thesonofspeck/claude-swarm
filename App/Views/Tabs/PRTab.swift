@@ -22,6 +22,11 @@ struct PRTab: View {
     @State private var replyDrafts: [Int64: String] = [:]
     @State private var posting: Set<Int64> = []
     @State private var resolvedRoots: Set<Int64> = []
+    @State private var reviewing: Bool = false
+    @State private var reviewDraft: LLMHelper.PRReviewDraft?
+    @State private var reviewOwner: String?
+    @State private var reviewRepo: String?
+    @State private var reviewSheetPresented: Bool = false
 
     var body: some View {
         Group {
@@ -146,6 +151,23 @@ struct PRTab: View {
                 }
             }
         }
+        .sheet(isPresented: $reviewSheetPresented, onDismiss: {
+            reviewDraft = nil
+            reviewOwner = nil
+            reviewRepo = nil
+        }) {
+            if let draft = reviewDraft, let owner = reviewOwner, let repo = reviewRepo {
+                PRReviewSheet(
+                    prNumber: pr.number,
+                    prTitle: pr.title,
+                    owner: owner,
+                    repo: repo,
+                    initial: draft
+                ) { edited in
+                    try await submitReview(edited, pr: pr, owner: owner, repo: repo)
+                }
+            }
+        }
     }
 
     private func header(_ pr: GHPullRequest) -> some View {
@@ -171,6 +193,23 @@ struct PRTab: View {
                 }
             }
             Spacer()
+            Button {
+                Task { await startReview(pr) }
+            } label: {
+                if reviewing {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Drafting review…")
+                    }
+                } else {
+                    Label("Review with Claude", systemImage: "eyes")
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(!env.llm.isUsable || reviewing)
+            .help(env.llm.isUsable
+                ? "Generate a draft review — you'll edit and approve before it's submitted."
+                : "Configure Claude in Settings → AI to enable")
             Button("Open in browser") {
                 if let url = URL(string: pr.url) { NSWorkspace.shared.open(url) }
             }
@@ -475,6 +514,70 @@ struct PRTab: View {
                 drafting = false
             }
         }
+    }
+
+    private func startReview(_ pr: GHPullRequest) async {
+        guard env.llm.isUsable else { return }
+        reviewing = true
+        error = nil
+        do {
+            let resolved = try await resolveOwnerRepo()
+            let diff = try await env.github.prDiff(
+                owner: resolved.owner, repo: resolved.repo, number: pr.number
+            )
+            let draft = try await env.llm.reviewPR(
+                diff: diff,
+                prTitle: pr.title,
+                prBody: pr.body,
+                prAuthor: pr.author?.login,
+                baseRef: pr.baseRefName ?? project?.defaultBaseBranch ?? "main",
+                headRef: pr.headRefName ?? session.branch
+            )
+            await MainActor.run {
+                self.reviewOwner = resolved.owner
+                self.reviewRepo = resolved.repo
+                self.reviewDraft = draft
+                self.reviewing = false
+                self.reviewSheetPresented = true
+            }
+        } catch {
+            await MainActor.run {
+                self.error = "Couldn't draft review: \(error.localizedDescription)"
+                self.reviewing = false
+            }
+        }
+    }
+
+    private func submitReview(
+        _ draft: LLMHelper.PRReviewDraft,
+        pr: GHPullRequest,
+        owner: String,
+        repo: String
+    ) async throws {
+        let event: GitHubClient.ReviewEvent = {
+            switch draft.verdict {
+            case .approve: return .approve
+            case .requestChanges: return .requestChanges
+            case .comment: return .comment
+            }
+        }()
+        let lineComments = draft.comments.map {
+            GitHubClient.ReviewLineComment(path: $0.file, line: $0.line, body: $0.body)
+        }
+        try await env.github.submitReview(
+            owner: owner, repo: repo, number: pr.number,
+            event: event,
+            summary: draft.summary,
+            comments: lineComments
+        )
+        await load()
+    }
+
+    private func resolveOwnerRepo() async throws -> (owner: String, repo: String) {
+        if let p = project, let o = p.githubOwner, let r = p.githubRepo {
+            return (o, r)
+        }
+        return try await env.github.currentRepo(in: URL(fileURLWithPath: session.worktreePath))
     }
 
     /// Render parsed diff back into a unified-diff-ish string the LLM can

@@ -45,7 +45,7 @@ public enum BootstrapResources {
         return url
     }
 
-    public static let bundledSkillNames = ["wrike-task-drafter", "pr-drafter", "memory"]
+    public static let bundledSkillNames = ["wrike-task-drafter", "pr-drafter", "pr-reviewer", "memory"]
 
     /// Copy the bundled notify hook into `directory` if its content differs
     /// from what's already there. Skips writes (and the chmod) on every

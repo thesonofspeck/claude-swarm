@@ -442,4 +442,57 @@ public actor GitHubClient {
             "--json", "name,state,conclusion,link,bucket"
         ])
     }
+
+    /// Fetch the unified diff for a pull request — the input the
+    /// pr-reviewer skill expects.
+    public func prDiff(owner: String, repo: String, number: Int) async throws -> String {
+        let result = try await runner.run([
+            "pr", "diff", "\(number)", "--repo", "\(owner)/\(repo)"
+        ])
+        return result.stdout
+    }
+
+    public enum ReviewEvent: String, Sendable {
+        case approve = "APPROVE"
+        case requestChanges = "REQUEST_CHANGES"
+        case comment = "COMMENT"
+    }
+
+    public struct ReviewLineComment: Sendable, Equatable {
+        public let path: String
+        public let line: Int
+        public let body: String
+
+        public init(path: String, line: Int, body: String) {
+            self.path = path
+            self.line = line
+            self.body = body
+        }
+    }
+
+    /// Submit a draft review on a PR. `event = .comment` allows an empty
+    /// `body` if there is at least one inline comment; APPROVE and
+    /// REQUEST_CHANGES always include the summary as the review body.
+    public func submitReview(
+        owner: String, repo: String, number: Int,
+        event: ReviewEvent,
+        summary: String,
+        comments: [ReviewLineComment]
+    ) async throws {
+        var payload: [String: Any] = [
+            "event": event.rawValue,
+            "body": summary
+        ]
+        if !comments.isEmpty {
+            payload["comments"] = comments.map { c -> [String: Any] in
+                ["path": c.path, "line": c.line, "side": "RIGHT", "body": c.body]
+            }
+        }
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [])
+        _ = try await runner.run([
+            "api", "-X", "POST",
+            "repos/\(owner)/\(repo)/pulls/\(number)/reviews",
+            "--input", "-"
+        ], stdin: data)
+    }
 }

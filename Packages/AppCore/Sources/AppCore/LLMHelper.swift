@@ -67,6 +67,50 @@ public final class LLMHelper {
         public var body: String
     }
 
+    public enum PRReviewVerdict: String, Sendable, CaseIterable {
+        case approve
+        case comment
+        case requestChanges = "request_changes"
+    }
+
+    public enum PRCommentSeverity: String, Sendable, CaseIterable {
+        case block, major, minor, nit
+    }
+
+    public struct PRReviewComment: Sendable, Identifiable, Hashable {
+        public let id: UUID
+        public var file: String
+        public var line: Int
+        public var severity: PRCommentSeverity
+        public var body: String
+
+        public init(
+            id: UUID = UUID(),
+            file: String,
+            line: Int,
+            severity: PRCommentSeverity,
+            body: String
+        ) {
+            self.id = id
+            self.file = file
+            self.line = line
+            self.severity = severity
+            self.body = body
+        }
+    }
+
+    public struct PRReviewDraft: Sendable {
+        public var verdict: PRReviewVerdict
+        public var summary: String
+        public var comments: [PRReviewComment]
+
+        public init(verdict: PRReviewVerdict, summary: String, comments: [PRReviewComment]) {
+            self.verdict = verdict
+            self.summary = summary
+            self.comments = comments
+        }
+    }
+
     public func draftWrikeTask(from hint: String, projectContext: String? = nil) async throws -> WrikeTaskDraft {
         let skill = try loadSkill(named: "wrike-task-drafter")
         var prompt = "Hint: \(hint)"
@@ -84,6 +128,34 @@ public final class LLMHelper {
         if let taskBody  { prompt += "\n\nLinked Wrike task description:\n\(String(taskBody.prefix(2000)))" }
         let response = try await runClaudePrint(prompt: prompt, systemAppend: skill)
         return parsePRDraft(response, fallbackTitle: taskTitle ?? "")
+    }
+
+    /// Generate a draft PR review by feeding the PR's unified diff and
+    /// metadata to `claude -p` with the bundled `pr-reviewer` skill. The
+    /// returned draft is *never* auto-submitted — the caller surfaces it
+    /// in a HIL sheet for the user to edit and submit.
+    public func reviewPR(
+        diff: String,
+        prTitle: String,
+        prBody: String?,
+        prAuthor: String?,
+        baseRef: String,
+        headRef: String
+    ) async throws -> PRReviewDraft {
+        let skill = try loadSkill(named: "pr-reviewer")
+        var prompt = """
+        PR title: \(prTitle)
+        Branch: \(baseRef) ← \(headRef)
+        """
+        if let prAuthor, !prAuthor.isEmpty {
+            prompt += "\nAuthor: \(prAuthor)"
+        }
+        if let prBody, !prBody.isEmpty {
+            prompt += "\n\nPR description:\n\(prBody.prefix(2000))"
+        }
+        prompt += "\n\nUnified diff (truncated to 24000 chars):\n\n\(String(diff.prefix(24000)))"
+        let response = try await runClaudePrint(prompt: prompt, systemAppend: skill)
+        return parseReviewDraft(response)
     }
 
     public func draftSessionPrompt(from hint: String, projectName: String?) async throws -> String {
@@ -221,6 +293,88 @@ public final class LLMHelper {
         }
         let body = bodyLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         return WrikeTaskDraft(title: title.isEmpty ? fallbackTitle : title, description: body)
+    }
+
+    /// Parse the strict pr-reviewer skill output into a structured draft.
+    /// Tolerant of stray whitespace, optional code-fence wrappers, and a
+    /// few common formatting drifts; missing pieces fall back to safe
+    /// defaults (verdict=`comment`, empty summary, empty comments).
+    func parseReviewDraft(_ raw: String) -> PRReviewDraft {
+        // Strip a single outer ``` … ``` fence if Claude added one.
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("```") {
+            if let firstNewline = text.firstIndex(of: "\n") {
+                text = String(text[text.index(after: firstNewline)...])
+            }
+            if text.hasSuffix("```") {
+                text = String(text.dropLast(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        var verdict: PRReviewVerdict = .comment
+        var summaryLines: [String] = []
+        var commentBlocks: [[String: String]] = []
+        var current: [String: String] = [:]
+
+        enum Section { case none, summary, comments }
+        var section: Section = .none
+
+        for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = String(rawLine)
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.uppercased().hasPrefix("VERDICT:") {
+                let value = trimmed.dropFirst("VERDICT:".count).trimmingCharacters(in: .whitespaces).lowercased()
+                if let v = PRReviewVerdict(rawValue: value) { verdict = v }
+                section = .none
+                continue
+            }
+            if trimmed.uppercased().hasPrefix("SUMMARY:") {
+                section = .summary
+                continue
+            }
+            if trimmed.uppercased().hasPrefix("COMMENTS:") {
+                section = .comments
+                continue
+            }
+            switch section {
+            case .none:
+                continue
+            case .summary:
+                summaryLines.append(line)
+            case .comments:
+                if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
+                    if !current.isEmpty {
+                        commentBlocks.append(current)
+                        current = [:]
+                    }
+                    let kv = trimmed.dropFirst(2)
+                    addKV(String(kv), into: &current)
+                } else if trimmed.contains(":") {
+                    addKV(trimmed, into: &current)
+                }
+            }
+        }
+        if !current.isEmpty { commentBlocks.append(current) }
+
+        let summary = summaryLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        let comments: [PRReviewComment] = commentBlocks.compactMap { dict in
+            guard let file = dict["file"], !file.isEmpty,
+                  let lineStr = dict["line"], let line = Int(lineStr),
+                  let body = dict["body"], !body.isEmpty else { return nil }
+            let severity = (dict["severity"].flatMap(PRCommentSeverity.init(rawValue:))) ?? .minor
+            return PRReviewComment(file: file, line: line, severity: severity, body: body)
+        }
+
+        return PRReviewDraft(verdict: verdict, summary: summary, comments: comments)
+    }
+
+    private func addKV(_ s: String, into dict: inout [String: String]) {
+        guard let colon = s.firstIndex(of: ":") else { return }
+        let key = s[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
+        let value = s[s.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+        if !key.isEmpty {
+            dict[key] = value
+        }
     }
 
     func parsePRDraft(_ raw: String, fallbackTitle: String) -> PRDraft {
