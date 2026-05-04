@@ -63,6 +63,64 @@ public actor GitHubClient {
         ])
     }
 
+    /// Clone `owner/repo` into `parent/<repo>` and return the resulting
+    /// path. Errors if the destination already exists — caller should
+    /// validate first to give a friendlier prompt.
+    public func cloneRepo(
+        owner: String,
+        repo: String,
+        intoParent parent: URL
+    ) async throws -> URL {
+        let dest = parent.appendingPathComponent(repo)
+        if FileManager.default.fileExists(atPath: dest.path) {
+            throw GhError.nonZeroExit(
+                code: 1,
+                stderr: "Destination already exists: \(dest.path)"
+            )
+        }
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        _ = try await runner.run(["repo", "clone", "\(owner)/\(repo)", dest.path])
+        return dest
+    }
+
+    public enum RepoVisibility: String, Sendable {
+        case `public`, `private`, `internal`
+    }
+
+    /// Create a new GitHub repo and clone it locally. Uses
+    /// `gh repo create <name> --<vis> --add-readme --clone`. The repo is
+    /// owned by the authenticated user; org-owned repos can be created
+    /// by passing `org/name` as `name`.
+    public func createRepo(
+        name: String,
+        visibility: RepoVisibility,
+        description: String?,
+        intoParent parent: URL,
+        addReadme: Bool = true
+    ) async throws -> URL {
+        let leafName = name.split(separator: "/").last.map(String.init) ?? name
+        let dest = parent.appendingPathComponent(leafName)
+        if FileManager.default.fileExists(atPath: dest.path) {
+            throw GhError.nonZeroExit(
+                code: 1,
+                stderr: "Destination already exists: \(dest.path)"
+            )
+        }
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+
+        var args = ["repo", "create", name, "--\(visibility.rawValue)", "--clone"]
+        if addReadme { args.append("--add-readme") }
+        if let description, !description.isEmpty {
+            args.append("--description")
+            args.append(description)
+        }
+        // `gh repo create … --clone` clones into the *current* dir's
+        // subdir matching the repo name; run in `parent` so the result
+        // lands at `dest`.
+        _ = try await runner.run(args, in: parent)
+        return dest
+    }
+
     // MARK: - PRs
 
     public func listPullRequests(

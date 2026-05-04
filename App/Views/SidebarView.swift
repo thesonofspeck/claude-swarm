@@ -2,7 +2,6 @@ import SwiftUI
 import AppCore
 import PersistenceKit
 import ClaudeSwarmNotifications
-import GitKit
 
 struct SidebarView: View {
     @Environment(AppEnvironment.self) private var env
@@ -245,114 +244,14 @@ struct ProjectInitial: View {
     }
 }
 
+/// Thin shell — preserves the existing call sites and just hosts the
+/// onboarding wizard. Drag-drop callers pass an `initialPath` and the
+/// wizard short-circuits to the configure step.
 struct AddProjectSheet: View {
-    @Environment(AppEnvironment.self) private var env
-    @Environment(ProjectListViewModel.self) private var projectList
-    @Environment(\.dismiss) private var dismiss
     var initialPath: String? = nil
-    @State private var name = ""
-    @State private var path = ""
-    @State private var baseBranch = "main"
-    @State private var wrikeFolder = ""
-    @State private var githubOwner = ""
-    @State private var githubRepo = ""
-    @State private var kubeContext = ""
-    @State private var kubeNamespace = ""
-    @State private var creating = false
-    @State private var error: String?
-    @State private var detectedRepo: String?
 
     var body: some View {
-        Form {
-            Section("Project") {
-                TextField("Name", text: $name)
-                HStack {
-                    TextField("Local path", text: $path)
-                    Button("Choose…") { chooseDirectory() }
-                }
-                TextField("Default base branch", text: $baseBranch)
-            }
-            Section("GitHub") {
-                if let detectedRepo {
-                    Pill(text: detectedRepo, systemImage: "checkmark.seal", tint: Palette.green)
-                }
-                TextField("Owner", text: $githubOwner)
-                TextField("Repo", text: $githubRepo)
-            }
-            Section("Wrike") {
-                TextField("Folder ID (optional)", text: $wrikeFolder)
-            }
-            Section("Kubernetes (optional)") {
-                TextField("kubectl context", text: $kubeContext, prompt: Text("e.g. arn:aws:eks:us-east-1:…:cluster/prod"))
-                TextField("Default namespace", text: $kubeNamespace, prompt: Text("default"))
-            }
-            if let error {
-                Section { Text(error).foregroundStyle(Palette.red) }
-            }
-        }
-        .formStyle(.grouped)
-        .frame(width: 520, height: 580)
-        .onAppear {
-            if let initialPath, path.isEmpty {
-                path = initialPath
-                if name.isEmpty {
-                    name = (initialPath as NSString).lastPathComponent
-                }
-                autodiscover(at: initialPath)
-            }
-        }
-        .onChange(of: path) { _, newValue in
-            autodiscover(at: newValue)
-        }
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                Button(creating ? "Adding…" : "Add") {
-                    Task {
-                        creating = true
-                        await projectList.register(
-                            name: name, path: path, baseBranch: baseBranch,
-                            wrikeFolder: wrikeFolder.isEmpty ? nil : wrikeFolder,
-                            githubOwner: githubOwner.isEmpty ? nil : githubOwner,
-                            githubRepo: githubRepo.isEmpty ? nil : githubRepo,
-                            kubeContext: kubeContext.isEmpty ? nil : kubeContext,
-                            kubeNamespace: kubeNamespace.isEmpty ? nil : kubeNamespace
-                        )
-                        creating = false
-                        if projectList.error == nil { dismiss() }
-                        else { error = projectList.error }
-                    }
-                }
-                .disabled(name.isEmpty || path.isEmpty || creating)
-            }
-        }
-    }
-
-    private func chooseDirectory() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url {
-            path = url.path
-            if name.isEmpty { name = url.lastPathComponent }
-            autodiscover(at: url.path)
-        }
-    }
-
-    private func autodiscover(at path: String) {
-        guard !path.isEmpty,
-              let origin = GitConfigParser.origin(in: URL(fileURLWithPath: path)) else {
-            detectedRepo = nil
-            return
-        }
-        if let owner = origin.owner, githubOwner.isEmpty { githubOwner = owner }
-        if let repo = origin.repo, githubRepo.isEmpty { githubRepo = repo }
-        if let owner = origin.owner, let repo = origin.repo {
-            detectedRepo = "\(owner)/\(repo)"
-        }
+        OnboardingWizard(initialPath: initialPath)
     }
 }
 
