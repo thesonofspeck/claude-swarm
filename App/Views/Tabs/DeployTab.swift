@@ -23,6 +23,7 @@ struct DeployTab: View {
     @State private var selectedDeploymentId: String?
     @State private var bindingSheet = false
     @State private var actionInFlight = false
+    @State private var logsPod: K8sPod?
 
     var body: some View {
         Group {
@@ -43,6 +44,14 @@ struct DeployTab: View {
             if let project {
                 KubeBindingSheet(project: project)
             }
+        }
+        .sheet(item: $logsPod) { pod in
+            PodLogsSheet(
+                pod: pod.name,
+                container: pod.containers.first,
+                context: project?.kubeContext,
+                namespace: project?.kubeNamespace ?? pod.namespace
+            )
         }
     }
 
@@ -269,6 +278,13 @@ struct DeployTab: View {
                 .foregroundStyle(Palette.fgMuted)
             }
             Spacer()
+            Button {
+                logsPod = pod
+            } label: {
+                Label("Logs", systemImage: "terminal")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
             Pill(text: pod.phase.rawValue, tint: podTint(pod.phase))
         }
         .padding(.horizontal, Metrics.Space.md)

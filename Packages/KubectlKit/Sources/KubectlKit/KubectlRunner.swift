@@ -8,7 +8,7 @@ public struct KubectlResult: Equatable, Sendable {
     public var ok: Bool { exitCode == 0 }
 }
 
-public enum KubectlError: Error, LocalizedError {
+public enum KubectlError: Error, LocalizedError, Sendable {
     case nonZeroExit(code: Int32, stderr: String)
     case launchFailed(String)
     case decodeFailed(String)
@@ -130,6 +130,73 @@ public struct KubectlRunner: Sendable {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
             throw KubectlError.decodeFailed("\(error)")
+        }
+    }
+
+    /// Run kubectl and yield stdout chunks as bytes arrive — for
+    /// `logs -f`, `port-forward`, or any long-running command. Cancel
+    /// the consuming Task to terminate the subprocess.
+    public func runStreaming(
+        _ args: [String],
+        context: String? = nil,
+        namespace: String? = nil,
+        env: [String: String]? = nil
+    ) -> AsyncThrowingStream<String, Error> {
+        var fullArgs: [String] = []
+        if executable.hasSuffix("/env") {
+            fullArgs.append("kubectl")
+        }
+        if let context, !context.isEmpty {
+            fullArgs.append("--context")
+            fullArgs.append(context)
+        }
+        if let namespace, !namespace.isEmpty {
+            fullArgs.append("--namespace")
+            fullArgs.append(namespace)
+        }
+        fullArgs.append(contentsOf: args)
+        let executablePath = executable
+        let resolvedArgs = fullArgs
+
+        return AsyncThrowingStream { continuation in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executablePath)
+            process.arguments = resolvedArgs
+            if let env { process.environment = env }
+
+            let outPipe = Pipe()
+            // Merge stderr into stdout — log viewers want everything.
+            process.standardOutput = outPipe
+            process.standardError = outPipe
+
+            outPipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if data.isEmpty {
+                    continuation.finish()
+                    return
+                }
+                if let chunk = String(data: data, encoding: .utf8), !chunk.isEmpty {
+                    continuation.yield(chunk)
+                }
+            }
+
+            process.terminationHandler = { _ in
+                outPipe.fileHandleForReading.readabilityHandler = nil
+                continuation.finish()
+            }
+
+            continuation.onTermination = { _ in
+                outPipe.fileHandleForReading.readabilityHandler = nil
+                if process.isRunning {
+                    process.terminate()
+                }
+            }
+
+            do {
+                try process.run()
+            } catch {
+                continuation.finish(throwing: KubectlError.launchFailed("\(error)"))
+            }
         }
     }
 }

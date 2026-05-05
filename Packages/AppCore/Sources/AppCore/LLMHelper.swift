@@ -142,7 +142,38 @@ public final class LLMHelper {
         baseRef: String,
         headRef: String
     ) async throws -> PRReviewDraft {
+        let prompt = buildReviewPrompt(diff: diff, prTitle: prTitle, prBody: prBody, prAuthor: prAuthor, baseRef: baseRef, headRef: headRef)
         let skill = try loadSkill(named: "pr-reviewer")
+        let response = try await runClaudePrint(prompt: prompt, systemAppend: skill)
+        return parseReviewDraft(response)
+    }
+
+    /// Streaming variant. Yields stdout chunks as they arrive so callers
+    /// can render the agent's output live; cancel the consuming task to
+    /// terminate the underlying `claude -p` subprocess. The final
+    /// accumulated text parses with `parseReviewDraft(_:)` once the
+    /// stream finishes.
+    public func streamReviewPR(
+        diff: String,
+        prTitle: String,
+        prBody: String?,
+        prAuthor: String?,
+        baseRef: String,
+        headRef: String
+    ) throws -> AsyncThrowingStream<String, Error> {
+        let prompt = buildReviewPrompt(diff: diff, prTitle: prTitle, prBody: prBody, prAuthor: prAuthor, baseRef: baseRef, headRef: headRef)
+        let skill = try loadSkill(named: "pr-reviewer")
+        return streamClaudePrint(prompt: prompt, systemAppend: skill)
+    }
+
+    private func buildReviewPrompt(
+        diff: String,
+        prTitle: String,
+        prBody: String?,
+        prAuthor: String?,
+        baseRef: String,
+        headRef: String
+    ) -> String {
         var prompt = """
         PR title: \(prTitle)
         Branch: \(baseRef) ← \(headRef)
@@ -154,8 +185,7 @@ public final class LLMHelper {
             prompt += "\n\nPR description:\n\(prBody.prefix(2000))"
         }
         prompt += "\n\nUnified diff (truncated to 24000 chars):\n\n\(String(diff.prefix(24000)))"
-        let response = try await runClaudePrint(prompt: prompt, systemAppend: skill)
-        return parseReviewDraft(response)
+        return prompt
     }
 
     public func draftSessionPrompt(from hint: String, projectName: String?) async throws -> String {
@@ -201,6 +231,63 @@ public final class LLMHelper {
     }
 
     // MARK: - Subprocess
+
+    /// Stream the same `claude -p` invocation as `runClaudePrint`,
+    /// yielding stdout chunks as they arrive. Cancel the consuming
+    /// task to terminate the subprocess.
+    func streamClaudePrint(prompt: String, systemAppend: String) -> AsyncThrowingStream<String, Error> {
+        let executable = claudeExecutableProvider()
+        let cwd = projectRootProvider()
+        return AsyncThrowingStream { continuation in
+            guard FileManager.default.isExecutableFile(atPath: executable) else {
+                continuation.finish(throwing: LLMError.claudeNotFound)
+                return
+            }
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = [
+                "-p", prompt,
+                "--append-system-prompt", systemAppend,
+                "--output-format", "text"
+            ]
+            if let cwd { process.currentDirectoryURL = cwd }
+
+            let outPipe = Pipe()
+            let errPipe = Pipe()
+            process.standardOutput = outPipe
+            process.standardError = errPipe
+
+            outPipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if data.isEmpty { return }
+                if let chunk = String(data: data, encoding: .utf8), !chunk.isEmpty {
+                    continuation.yield(chunk)
+                }
+            }
+
+            process.terminationHandler = { proc in
+                outPipe.fileHandleForReading.readabilityHandler = nil
+                if proc.terminationStatus == 0 {
+                    continuation.finish()
+                } else {
+                    let errData = (try? errPipe.fileHandleForReading.readToEnd()) ?? Data()
+                    let stderr = String(decoding: errData, as: UTF8.self)
+                    continuation.finish(throwing: LLMError.nonZero(code: proc.terminationStatus, stderr: stderr))
+                }
+            }
+
+            continuation.onTermination = { _ in
+                outPipe.fileHandleForReading.readabilityHandler = nil
+                if process.isRunning { process.terminate() }
+            }
+
+            do {
+                try process.run()
+            } catch {
+                continuation.finish(throwing: LLMError.transport("\(error)"))
+            }
+        }
+    }
 
     private func runClaudePrint(prompt: String, systemAppend: String) async throws -> String {
         let executable = claudeExecutableProvider()
@@ -253,7 +340,7 @@ public final class LLMHelper {
         }.value
     }
 
-    public enum LLMError: Error, LocalizedError {
+    public enum LLMError: Error, LocalizedError, Sendable {
         case claudeNotFound
         case timedOut(seconds: Int)
         case nonZero(code: Int32, stderr: String)
@@ -299,7 +386,7 @@ public final class LLMHelper {
     /// Tolerant of stray whitespace, optional code-fence wrappers, and a
     /// few common formatting drifts; missing pieces fall back to safe
     /// defaults (verdict=`comment`, empty summary, empty comments).
-    func parseReviewDraft(_ raw: String) -> PRReviewDraft {
+    public func parseReviewDraft(_ raw: String) -> PRReviewDraft {
         // Strip a single outer ``` … ``` fence if Claude added one.
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.hasPrefix("```") {

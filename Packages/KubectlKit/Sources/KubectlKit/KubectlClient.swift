@@ -205,6 +205,23 @@ public actor KubectlClient {
         return r.stdout
     }
 
+    /// `kubectl logs -f` streamed line-by-line. Cancel the consuming
+    /// task to stop following.
+    nonisolated public func streamLogs(
+        pod: String,
+        container: String? = nil,
+        context: String?,
+        namespace: String?,
+        tail: Int = 500
+    ) -> AsyncThrowingStream<String, Error> {
+        var args = ["logs", pod, "-f", "--tail=\(tail)"]
+        if let container, !container.isEmpty {
+            args.append("-c")
+            args.append(container)
+        }
+        return runner.runStreaming(args, context: context, namespace: namespace)
+    }
+
     public func deletePod(name: String, context: String?, namespace: String?) async throws {
         _ = try await runner.run(
             ["delete", "pod", name],

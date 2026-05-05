@@ -27,6 +27,8 @@ struct PRTab: View {
     @State private var reviewOwner: String?
     @State private var reviewRepo: String?
     @State private var reviewSheetPresented: Bool = false
+    @State private var reviewStreamText: String = ""
+    @State private var reviewTask: Task<Void, Never>?
 
     var body: some View {
         Group {
@@ -131,6 +133,10 @@ struct PRTab: View {
         VStack(alignment: .leading, spacing: 0) {
             header(pr)
             Divider()
+            if reviewing {
+                reviewStreamBanner
+                Divider().background(Palette.divider)
+            }
             if loading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -516,16 +522,88 @@ struct PRTab: View {
         }
     }
 
+    /// Inline live preview shown while the agent streams its review.
+    /// Auto-scrolls to bottom; Cancel terminates the underlying
+    /// `claude -p` subprocess via task cancellation.
+    private var reviewStreamBanner: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(Palette.purple)
+                    .symbolEffect(.pulse, options: .repeating)
+                Text("Drafting review…")
+                    .font(Type.label)
+                    .foregroundStyle(Palette.fgBright)
+                Spacer()
+                Text("\(reviewStreamText.count) chars")
+                    .font(Type.caption)
+                    .foregroundStyle(Palette.fgMuted)
+                Button("Cancel") {
+                    cancelReview()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    Text(reviewStreamText.isEmpty ? "Waiting for first tokens…" : reviewStreamText)
+                        .font(Type.mono)
+                        .foregroundStyle(reviewStreamText.isEmpty ? Palette.fgMuted : Palette.fg)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .padding(Metrics.Space.sm)
+                        .id("__bottom__")
+                }
+                .frame(maxHeight: 200)
+                .background(Palette.bgRaised)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Metrics.Radius.md)
+                        .stroke(Palette.divider, lineWidth: Metrics.Stroke.hairline)
+                )
+                .onChange(of: reviewStreamText) { _, _ in
+                    withAnimation(.linear(duration: 0.05)) {
+                        proxy.scrollTo("__bottom__", anchor: .bottom)
+                    }
+                }
+            }
+        }
+        .padding(Metrics.Space.md)
+        .background(Palette.bgSidebar)
+    }
+
+    private func cancelReview() {
+        reviewTask?.cancel()
+        reviewTask = nil
+        reviewing = false
+        reviewStreamText = ""
+    }
+
     private func startReview(_ pr: GHPullRequest) async {
         guard env.llm.isUsable else { return }
         reviewing = true
+        reviewStreamText = ""
         error = nil
+        let resolved: (owner: String, repo: String)
         do {
-            let resolved = try await resolveOwnerRepo()
-            let diff = try await env.github.prDiff(
+            resolved = try await resolveOwnerRepo()
+        } catch {
+            self.error = "Couldn't resolve repo: \(error.localizedDescription)"
+            reviewing = false
+            return
+        }
+        let diff: String
+        do {
+            diff = try await env.github.prDiff(
                 owner: resolved.owner, repo: resolved.repo, number: pr.number
             )
-            let draft = try await env.llm.reviewPR(
+        } catch {
+            self.error = "Couldn't fetch diff: \(error.localizedDescription)"
+            reviewing = false
+            return
+        }
+        let stream: AsyncThrowingStream<String, Error>
+        do {
+            stream = try env.llm.streamReviewPR(
                 diff: diff,
                 prTitle: pr.title,
                 prBody: pr.body,
@@ -533,17 +611,33 @@ struct PRTab: View {
                 baseRef: pr.baseRefName ?? project?.defaultBaseBranch ?? "main",
                 headRef: pr.headRefName ?? session.branch
             )
-            await MainActor.run {
+        } catch {
+            self.error = "Couldn't start review: \(error.localizedDescription)"
+            reviewing = false
+            return
+        }
+        reviewTask = Task { @MainActor in
+            var accumulator = ""
+            do {
+                for try await chunk in stream {
+                    if Task.isCancelled { break }
+                    accumulator += chunk
+                    reviewStreamText = accumulator
+                }
+                if Task.isCancelled { return }
+                let draft = env.llm.parseReviewDraft(accumulator)
                 self.reviewOwner = resolved.owner
                 self.reviewRepo = resolved.repo
                 self.reviewDraft = draft
                 self.reviewing = false
+                self.reviewStreamText = ""
+                self.reviewTask = nil
                 self.reviewSheetPresented = true
-            }
-        } catch {
-            await MainActor.run {
-                self.error = "Couldn't draft review: \(error.localizedDescription)"
+            } catch {
+                self.error = "Review failed: \(error.localizedDescription)"
                 self.reviewing = false
+                self.reviewStreamText = ""
+                self.reviewTask = nil
             }
         }
     }
