@@ -1,37 +1,57 @@
 import Foundation
 
-/// Resolves an identifier name to one or more declaration sites in the
-/// worktree using `git grep -nE`. Cheap enough to run on every Cmd+click;
-/// no persistent index needed. Catches Swift/Go/Rust/Python/JS/TS
-/// declarations via a broad keyword regex — preferring correctness over
-/// completeness on languages we don't know well yet.
+/// Resolves an identifier name to one or more declaration sites.
+/// Consults `SymbolIndex` first (fast in-memory lookup); only falls
+/// back to `git grep -nE` when the index has no entry — which happens
+/// during the initial warmup window or for symbols in languages the
+/// indexer doesn't yet understand.
 public struct SymbolNavigator: Sendable {
     public struct Match: Sendable, Equatable {
         public let path: String      // relative to worktree root
         public let line: Int
         public let snippet: String
+        public let source: Source
+
+        public enum Source: String, Sendable {
+            case index
+            case grep
+        }
     }
 
     public let worktreeRoot: URL
     public let gitExecutable: String
+    public let index: SymbolIndex?
 
-    public init(worktreeRoot: URL, gitExecutable: String = "/usr/bin/git") {
+    public init(
+        worktreeRoot: URL,
+        gitExecutable: String = "/usr/bin/git",
+        index: SymbolIndex? = nil
+    ) {
         self.worktreeRoot = worktreeRoot
         self.gitExecutable = gitExecutable
+        self.index = index
     }
 
     /// Returns up to `limit` declarations of `name`. Empty if none.
     public func definitions(of name: String, limit: Int = 20) async -> [Match] {
         guard isValidIdentifier(name) else { return [] }
-        // Word-boundary match for the identifier, anchored after a known
-        // definition keyword. Allows optional access modifiers.
+        // Index lookup first — O(1) hash hit + a slice.
+        if let index {
+            let indexed = await index.lookup(name)
+            if !indexed.isEmpty {
+                return indexed
+                    .prefix(limit)
+                    .map { Match(symbol: $0, root: worktreeRoot) }
+            }
+        }
+
+        // git grep fallback. Word-boundary match anchored after a known
+        // definition keyword; second pass catches JS/TS/Swift bindings.
         let keywords = "class|struct|enum|protocol|actor|extension|func|typealias|def|function|fn|interface|trait"
         let escaped = name.replacingOccurrences(of: "$", with: "\\$")
-        let pattern = "\\b(\(keywords))\\s+\(escaped)\\b"
-        let matches = await runGitGrep(pattern: pattern, limit: limit)
+        let primary = "\\b(\(keywords))\\s+\(escaped)\\b"
+        let matches = await runGitGrep(pattern: primary, limit: limit)
         if !matches.isEmpty { return matches }
-        // Fallback: `const|let|var name =` for JS/TS/Swift top-level
-        // bindings that aren't preceded by a definition keyword.
         let assign = "\\b(const|let|var)\\s+\(escaped)\\b"
         return await runGitGrep(pattern: assign, limit: limit)
     }
@@ -74,11 +94,28 @@ public struct SymbolNavigator: Sendable {
                 hits.append(Match(
                     path: String(parts[0]),
                     line: lineNumber,
-                    snippet: String(parts[2]).trimmingCharacters(in: .whitespaces)
+                    snippet: String(parts[2]).trimmingCharacters(in: .whitespaces),
+                    source: .grep
                 ))
                 if hits.count >= limit { break }
             }
             return hits
         }.value
+    }
+}
+
+extension SymbolNavigator.Match {
+    init(symbol: SymbolIndex.Symbol, root: URL) {
+        let rootPath = root.standardizedFileURL.path
+        let abs = symbol.file.standardizedFileURL.path
+        let rel: String
+        if abs == rootPath {
+            rel = abs
+        } else if abs.hasPrefix(rootPath + "/") {
+            rel = String(abs.dropFirst(rootPath.count + 1))
+        } else {
+            rel = abs
+        }
+        self.init(path: rel, line: symbol.line, snippet: symbol.kind + " " + symbol.name, source: .index)
     }
 }

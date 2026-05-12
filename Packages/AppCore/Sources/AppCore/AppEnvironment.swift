@@ -310,6 +310,18 @@ public final class AppEnvironment {
         return ws
     }
 
+    private var symbolIndexes: [String: SymbolIndex] = [:]
+
+    /// Per-worktree symbol index, cached so consumers (FilesTab,
+    /// SymbolNavigator) share the same warm map.
+    public func symbolIndex(for repoPath: String) -> SymbolIndex {
+        let key = (repoPath as NSString).standardizingPath
+        if let existing = symbolIndexes[key] { return existing }
+        let idx = SymbolIndex(worktreeRoot: URL(fileURLWithPath: key))
+        symbolIndexes[key] = idx
+        return idx
+    }
+
     public func saveSettings() {
         do {
             try settings.save(to: settingsURL)

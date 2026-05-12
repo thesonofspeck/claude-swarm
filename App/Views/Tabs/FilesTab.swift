@@ -28,7 +28,8 @@ struct FilesTab: View {
     private var navigator: SymbolNavigator {
         SymbolNavigator(
             worktreeRoot: URL(fileURLWithPath: session.worktreePath),
-            gitExecutable: env.settings.gitExecutable.isEmpty ? "/usr/bin/git" : env.settings.gitExecutable
+            gitExecutable: env.settings.gitExecutable.isEmpty ? "/usr/bin/git" : env.settings.gitExecutable,
+            index: env.symbolIndex(for: session.worktreePath)
         )
     }
 
@@ -60,10 +61,18 @@ struct FilesTab: View {
             await loadTree()
         }
         .task(id: session.id) {
+            // Warm the symbol index in the background. First Cmd+click
+            // before this completes falls back to git grep gracefully.
+            await env.symbolIndex(for: session.worktreePath).refresh()
+        }
+        .task(id: session.id) {
             let ws = env.gitWorkspace(for: session.worktreePath)
             for await invalidations in ws.pulse.events() {
                 if invalidations.contains(.files) || invalidations.contains(.status) {
                     await loadTree()
+                    // Mtime-based incremental refresh — only re-parses
+                    // the files whose modification timestamp moved.
+                    await env.symbolIndex(for: session.worktreePath).refresh()
                 }
             }
         }
