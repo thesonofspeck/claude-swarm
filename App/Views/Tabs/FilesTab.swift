@@ -16,6 +16,10 @@ struct FilesTab: View {
     @State private var loadingFile = false
     @State private var error: String?
     @State private var quickLookURL: URL?
+    @State private var editing = false
+    @State private var dirty = false
+    @State private var saving = false
+    @State private var loadedURL: URL?
 
     private var isSwift: Bool { fileExtension == "swift" }
 
@@ -29,7 +33,11 @@ struct FilesTab: View {
         HSplitView {
             tree
                 .frame(minWidth: 240, idealWidth: 280)
-            preview
+            VStack(spacing: 0) {
+                editorToolbar
+                Divider().background(Palette.divider)
+                preview
+            }
         }
         .task(id: session.id) {
             await loadTree()
@@ -73,11 +81,73 @@ struct FilesTab: View {
             guard let id = newValue, let node = find(id, in: entries), !node.isDirectory else {
                 fileContents = ""
                 fileExtension = ""
+                loadedURL = nil
+                editing = false
+                dirty = false
                 return
             }
             fileExtension = node.url.pathExtension.lowercased()
             Task { await loadFile(node.url) }
         }
+    }
+
+    private var editorToolbar: some View {
+        HStack(spacing: Metrics.Space.sm) {
+            if let url = loadedURL {
+                Image(systemName: "doc.text")
+                    .foregroundStyle(Palette.fgMuted)
+                    .imageScale(.small)
+                Text(url.lastPathComponent)
+                    .font(Type.body)
+                    .foregroundStyle(Palette.fgBright)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if dirty {
+                    Text("• unsaved")
+                        .font(Type.caption)
+                        .foregroundStyle(Palette.orange)
+                }
+            } else {
+                Text("No file selected")
+                    .font(Type.caption)
+                    .foregroundStyle(Palette.fgMuted)
+            }
+            Spacer()
+            if loadedURL != nil {
+                if editing {
+                    if saving { ProgressView().controlSize(.small) }
+                    Button {
+                        save()
+                    } label: {
+                        Label("Save", systemImage: "checkmark.circle.fill")
+                    }
+                    .keyboardShortcut("s", modifiers: .command)
+                    .disabled(!dirty || saving)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    Button {
+                        editing = false
+                        dirty = false
+                        if let url = loadedURL { Task { await loadFile(url) } }
+                    } label: {
+                        Label("Done", systemImage: "xmark")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                } else {
+                    Button {
+                        editing = true
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+        }
+        .padding(.horizontal, Metrics.Space.md)
+        .padding(.vertical, 6)
+        .background(Palette.bgSidebar)
     }
 
     private var preview: some View {
@@ -91,13 +161,23 @@ struct FilesTab: View {
                 )
             } else if loadingFile {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if fileContents.isEmpty {
+            } else if loadedURL == nil {
                 EmptyState(
                     title: "No file selected",
                     systemImage: "doc.text",
-                    description: "Pick a file from the tree to preview it.",
+                    description: "Pick a file from the tree to preview or edit it.",
                     tint: Palette.blue
                 )
+            } else if editing {
+                CodeEditorView(
+                    text: Binding(
+                        get: { fileContents },
+                        set: { fileContents = $0; dirty = true }
+                    ),
+                    fileExtension: fileExtension,
+                    isEditable: true
+                )
+                .background(Palette.bgBase)
             } else {
                 ScrollView {
                     if isSwift, let highlighted = highlightedSwift(fileContents) {
@@ -121,6 +201,21 @@ struct FilesTab: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private func save() {
+        guard let url = loadedURL else { return }
+        saving = true
+        defer { saving = false }
+        do {
+            try fileContents.write(to: url, atomically: true, encoding: .utf8)
+            dirty = false
+            // Trigger a workspace pulse so the diff/changes tabs refresh
+            // immediately after the user saves.
+            env.gitWorkspace(for: session.worktreePath).invalidate([.status, .files])
+        } catch {
+            self.error = "Save failed: \(error.localizedDescription)"
+        }
+    }
+
     private func loadTree() async {
         let root = URL(fileURLWithPath: session.worktreePath)
         let nodes = await Task.detached { try? FileNode.tree(at: root, depth: 6) }.value ?? []
@@ -129,11 +224,18 @@ struct FilesTab: View {
 
     private func loadFile(_ url: URL) async {
         loadingFile = true; error = nil
+        // If the user switched files mid-edit, drop unsaved changes —
+        // an explicit confirm dialog can be added if this becomes painful.
+        if loadedURL?.path != url.path {
+            editing = false
+            dirty = false
+        }
         do {
             let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
             let size = attrs[.size] as? Int ?? 0
             if size > 1_000_000 {
                 fileContents = ""
+                loadedURL = nil
                 error = "File is \(size / 1024) KiB — too large to preview here. Open it in your editor."
                 loadingFile = false
                 return
@@ -141,11 +243,13 @@ struct FilesTab: View {
             let data = try Data(contentsOf: url)
             guard let text = String(data: data, encoding: .utf8) else {
                 fileContents = ""
+                loadedURL = nil
                 error = "Binary file — preview not supported."
                 loadingFile = false
                 return
             }
             fileContents = text
+            loadedURL = url
             loadingFile = false
         } catch {
             self.error = "\(error.localizedDescription)"

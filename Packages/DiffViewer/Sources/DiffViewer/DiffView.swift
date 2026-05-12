@@ -3,10 +3,18 @@ import GitKit
 
 public struct DiffView: View {
     public let files: [DiffFile]
+    public let worktreeRoot: URL?
+    public let onSaved: ((URL) -> Void)?
     @State private var selectedFileIndex: Int = 0
 
-    public init(files: [DiffFile]) {
+    public init(
+        files: [DiffFile],
+        worktreeRoot: URL? = nil,
+        onSaved: ((URL) -> Void)? = nil
+    ) {
         self.files = files
+        self.worktreeRoot = worktreeRoot
+        self.onSaved = onSaved
     }
 
     public var body: some View {
@@ -17,7 +25,11 @@ public struct DiffView: View {
                 fileList
                     .frame(minWidth: 240, idealWidth: 280)
                 if let file = files[safe: selectedFileIndex] {
-                    DiffFileView(file: file)
+                    DiffFileView(
+                        file: file,
+                        worktreeRoot: worktreeRoot,
+                        onSaved: onSaved
+                    )
                 } else {
                     Text("Select a file")
                         .foregroundStyle(DiffPalette.muted)
@@ -88,27 +100,119 @@ struct DiffEmptyView: View {
 
 struct DiffFileView: View {
     let file: DiffFile
+    let worktreeRoot: URL?
+    let onSaved: ((URL) -> Void)?
+
+    @State private var editing = false
+    @State private var fileText: String = ""
+    @State private var loadedFromURL: URL?
+    @State private var dirty = false
+    @State private var saving = false
+    @State private var loadError: String?
+
+    private var canEdit: Bool {
+        worktreeRoot != nil
+            && !file.isBinary
+            && (file.newPath ?? file.oldPath) != nil
+    }
+
+    private var resolvedURL: URL? {
+        guard let root = worktreeRoot, let rel = file.newPath ?? file.oldPath else { return nil }
+        return root.appendingPathComponent(rel)
+    }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: []) {
-                header
-                ForEach(Array(file.hunks.enumerated()), id: \.offset) { _, hunk in
-                    hunkView(hunk)
-                }
+        VStack(spacing: 0) {
+            header
+            if editing {
+                editorBody
+            } else {
+                diffBody
             }
         }
         .background(DiffPalette.bg)
     }
 
+    private var diffBody: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: []) {
+                ForEach(Array(file.hunks.enumerated()), id: \.offset) { _, hunk in
+                    hunkView(hunk)
+                }
+            }
+        }
+    }
+
+    private var editorBody: some View {
+        Group {
+            if let error = loadError {
+                VStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 28))
+                        .foregroundStyle(DiffPalette.removed)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(DiffPalette.muted)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 360)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                CodeEditorView(
+                    text: Binding(
+                        get: { fileText },
+                        set: { newValue in
+                            fileText = newValue
+                            dirty = true
+                        }
+                    ),
+                    fileExtension: (file.newPath ?? file.oldPath ?? "").components(separatedBy: ".").last ?? "",
+                    isEditable: true
+                )
+            }
+        }
+        .task(id: resolvedURL?.path) { loadFileIfNeeded() }
+    }
+
     private var header: some View {
-        HStack {
+        HStack(spacing: 8) {
             Text(file.newPath ?? file.oldPath ?? "—")
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(DiffPalette.fgBright)
             Spacer()
             if file.isBinary {
                 Text("Binary").foregroundStyle(DiffPalette.muted).font(.caption)
+            }
+            if canEdit {
+                if editing {
+                    if saving {
+                        ProgressView().controlSize(.small)
+                    }
+                    Button {
+                        save()
+                    } label: {
+                        Label("Save", systemImage: "checkmark.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .keyboardShortcut("s", modifiers: .command)
+                    .disabled(!dirty || saving)
+                    Button {
+                        cancelEdit()
+                    } label: {
+                        Label("Done", systemImage: "xmark")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                } else {
+                    Button {
+                        editing = true
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
             }
         }
         .padding(.horizontal, 12)
@@ -117,6 +221,53 @@ struct DiffFileView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(DiffPalette.divider).frame(height: 0.5)
         }
+    }
+
+    private func loadFileIfNeeded() {
+        guard editing, let url = resolvedURL else { return }
+        if loadedFromURL?.path == url.path && !dirty { return }
+        loadError = nil
+        do {
+            let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+            let size = attrs[.size] as? Int ?? 0
+            if size > 1_000_000 {
+                loadError = "File is \(size / 1024) KiB — too large to edit here. Open it in your editor."
+                return
+            }
+            let data = try Data(contentsOf: url)
+            guard let text = String(data: data, encoding: .utf8) else {
+                loadError = "Binary file — preview not supported."
+                return
+            }
+            fileText = text
+            loadedFromURL = url
+            dirty = false
+        } catch {
+            loadError = error.localizedDescription
+        }
+    }
+
+    private func save() {
+        guard let url = resolvedURL else { return }
+        saving = true
+        defer { saving = false }
+        do {
+            try fileText.write(to: url, atomically: true, encoding: .utf8)
+            dirty = false
+            onSaved?(url)
+        } catch {
+            loadError = "Save failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func cancelEdit() {
+        // If the user has unsaved changes, drop them — pulse-driven
+        // diff refresh would clobber on next reload anyway. Confirmation
+        // dialog can be added if this becomes painful in practice.
+        editing = false
+        dirty = false
+        loadedFromURL = nil
+        fileText = ""
     }
 
     private func hunkView(_ hunk: DiffHunk) -> some View {
