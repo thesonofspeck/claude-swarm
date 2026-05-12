@@ -87,8 +87,13 @@ struct ChangesTab: View {
                     onSelect: { _ in Task { await reloadFileDiff(ws) } }
                 )
                 .frame(minWidth: 320, idealWidth: 360)
-                ChangesDiffPane(files: fileDiff, selection: selection)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ChangesDiffPane(
+                    files: fileDiff,
+                    selection: selection,
+                    worktreeRoot: URL(fileURLWithPath: session.worktreePath),
+                    onSaved: { _ in ws.invalidate([.status, .files]) }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             Divider().background(Palette.divider)
             CommitComposer(
@@ -284,6 +289,8 @@ private struct ChangesFileList: View {
 private struct ChangesDiffPane: View {
     let files: [DiffFile]
     let selection: String?
+    let worktreeRoot: URL?
+    let onSaved: ((URL) -> Void)?
 
     var body: some View {
         if selection == nil {
@@ -301,7 +308,7 @@ private struct ChangesDiffPane: View {
                 tint: Palette.fgMuted
             )
         } else {
-            DiffView(files: files)
+            DiffView(files: files, worktreeRoot: worktreeRoot, onSaved: onSaved)
         }
     }
 }

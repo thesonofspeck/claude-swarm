@@ -157,7 +157,17 @@ struct DiffTab: View {
             if loading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                DiffView(files: files)
+                DiffView(
+                    files: files,
+                    worktreeRoot: URL(fileURLWithPath: session.worktreePath),
+                    onSaved: { _ in
+                        // Saving the file invalidates status + files +
+                        // history. The pulse will refire .reload() and
+                        // the diff view rebuilds from the new contents.
+                        env.gitWorkspace(for: session.worktreePath)
+                            .invalidate([.status, .files])
+                    }
+                )
             }
         }
         .task(id: session.id) {
