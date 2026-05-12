@@ -20,6 +20,17 @@ struct FilesTab: View {
     @State private var dirty = false
     @State private var saving = false
     @State private var loadedURL: URL?
+    @State private var showTree: Bool = true
+    @State private var newFileSheet: Bool = false
+    @State private var scrollToLine: Int? = nil
+    @State private var jumpHint: String? = nil
+
+    private var navigator: SymbolNavigator {
+        SymbolNavigator(
+            worktreeRoot: URL(fileURLWithPath: session.worktreePath),
+            gitExecutable: env.settings.gitExecutable.isEmpty ? "/usr/bin/git" : env.settings.gitExecutable
+        )
+    }
 
     private var isSwift: Bool { fileExtension == "swift" }
 
@@ -31,8 +42,14 @@ struct FilesTab: View {
 
     var body: some View {
         HSplitView {
-            tree
+            if showTree {
+                VStack(spacing: 0) {
+                    treeToolbar
+                    Divider().background(Palette.divider)
+                    tree
+                }
                 .frame(minWidth: 240, idealWidth: 280)
+            }
             VStack(spacing: 0) {
                 editorToolbar
                 Divider().background(Palette.divider)
@@ -59,6 +76,52 @@ struct FilesTab: View {
             }
             return .ignored
         }
+        .sheet(isPresented: $newFileSheet) {
+            NewFileSheet(
+                worktreeRoot: URL(fileURLWithPath: session.worktreePath),
+                targetDirectory: currentTargetDirectory(),
+                onCreate: { url in
+                    Task {
+                        await loadTree()
+                        selection = url.path
+                        await loadFile(url)
+                        env.gitWorkspace(for: session.worktreePath).invalidate([.files, .status])
+                    }
+                }
+            )
+        }
+    }
+
+    private var treeToolbar: some View {
+        HStack(spacing: Metrics.Space.sm) {
+            Text("Project")
+                .font(Type.label)
+                .foregroundStyle(Palette.fgMuted)
+            Spacer()
+            Button {
+                newFileSheet = true
+            } label: {
+                Image(systemName: "doc.badge.plus")
+            }
+            .buttonStyle(.plain)
+            .help("New file…")
+            Button {
+                Task { await loadTree() }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.plain)
+            .help("Refresh")
+        }
+        .padding(.horizontal, Metrics.Space.md)
+        .padding(.vertical, 6)
+        .background(Palette.bgSidebar)
+    }
+
+    private func currentTargetDirectory() -> URL {
+        let root = URL(fileURLWithPath: session.worktreePath)
+        guard let id = selection, let node = find(id, in: entries) else { return root }
+        return node.isDirectory ? node.url : node.url.deletingLastPathComponent()
     }
 
     private var tree: some View {
@@ -93,6 +156,13 @@ struct FilesTab: View {
 
     private var editorToolbar: some View {
         HStack(spacing: Metrics.Space.sm) {
+            Button {
+                withAnimation { showTree.toggle() }
+            } label: {
+                Image(systemName: showTree ? "sidebar.left" : "sidebar.leading")
+            }
+            .buttonStyle(.plain)
+            .help(showTree ? "Hide project tree" : "Show project tree")
             if let url = loadedURL {
                 Image(systemName: "doc.text")
                     .foregroundStyle(Palette.fgMuted)
@@ -109,6 +179,11 @@ struct FilesTab: View {
                 }
             } else {
                 Text("No file selected")
+                    .font(Type.caption)
+                    .foregroundStyle(Palette.fgMuted)
+            }
+            if let jumpHint {
+                Text(jumpHint)
                     .font(Type.caption)
                     .foregroundStyle(Palette.fgMuted)
             }
@@ -175,7 +250,11 @@ struct FilesTab: View {
                         set: { fileContents = $0; dirty = true }
                     ),
                     fileExtension: fileExtension,
-                    isEditable: true
+                    isEditable: true,
+                    onJumpToSymbol: { word in
+                        Task { await jumpToSymbol(word) }
+                    },
+                    scrollToLine: $scrollToLine
                 )
                 .background(Palette.bgBase)
             } else {
@@ -222,6 +301,34 @@ struct FilesTab: View {
         entries = nodes
     }
 
+    private func jumpToSymbol(_ name: String) async {
+        let matches = await navigator.definitions(of: name, limit: 5)
+        guard let hit = matches.first else {
+            await MainActor.run {
+                jumpHint = "No definition found for \"\(name)\""
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(2))
+                    if jumpHint?.contains(name) == true { jumpHint = nil }
+                }
+            }
+            return
+        }
+        let url = URL(fileURLWithPath: session.worktreePath).appendingPathComponent(hit.path)
+        // Pick the tree node so the user sees where they landed.
+        selection = url.path
+        fileExtension = url.pathExtension.lowercased()
+        await loadFile(url)
+        await MainActor.run {
+            editing = true   // Cmd+click into a file → open it editable
+            scrollToLine = hit.line
+            if matches.count > 1 {
+                jumpHint = "\(matches.count) matches — showing first"
+            } else {
+                jumpHint = nil
+            }
+        }
+    }
+
     private func loadFile(_ url: URL) async {
         loadingFile = true; error = nil
         // If the user switched files mid-edit, drop unsaved changes —
@@ -265,6 +372,90 @@ struct FilesTab: View {
             }
         }
         return nil
+    }
+}
+
+struct NewFileSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let worktreeRoot: URL
+    let targetDirectory: URL
+    let onCreate: (URL) -> Void
+
+    @State private var filename: String = ""
+    @State private var error: String?
+
+    private var relativeTargetDisplay: String {
+        let rootPath = worktreeRoot.standardizedFileURL.path
+        let targetPath = targetDirectory.standardizedFileURL.path
+        if targetPath == rootPath { return "." }
+        if targetPath.hasPrefix(rootPath + "/") {
+            return String(targetPath.dropFirst(rootPath.count + 1))
+        }
+        return targetPath
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Metrics.Space.md) {
+            HStack(spacing: Metrics.Space.sm) {
+                Image(systemName: "doc.badge.plus")
+                    .foregroundStyle(Palette.cyan)
+                    .imageScale(.large)
+                Text("New file")
+                    .font(Type.heading)
+                    .foregroundStyle(Palette.fgBright)
+                Spacer()
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Location")
+                    .font(Type.label)
+                    .foregroundStyle(Palette.fgMuted)
+                Text(relativeTargetDisplay)
+                    .font(Type.mono)
+                    .foregroundStyle(Palette.fgBright)
+                    .textSelection(.enabled)
+            }
+            TextField("filename.ext", text: $filename, prompt: Text("e.g. NewView.swift"))
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { create() }
+            if let error {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Palette.red)
+                    .font(Type.caption)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Create") { create() }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(filename.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(Metrics.Space.lg)
+        .frame(width: 460)
+    }
+
+    private func create() {
+        let trimmed = filename.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        if trimmed.contains("/") || trimmed.contains("..") {
+            error = "Filename can't contain slashes or `..`. Pick a different directory in the tree to nest."
+            return
+        }
+        let url = targetDirectory.appendingPathComponent(trimmed)
+        if FileManager.default.fileExists(atPath: url.path) {
+            error = "A file with that name already exists."
+            return
+        }
+        do {
+            try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            try "".write(to: url, atomically: true, encoding: .utf8)
+            onCreate(url)
+            dismiss()
+        } catch {
+            self.error = "Couldn't create file: \(error.localizedDescription)"
+        }
     }
 }
 
