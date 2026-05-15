@@ -31,6 +31,25 @@ struct SidebarView: View {
             .keyboardShortcut("0", modifiers: .command)
             .help("Welcome — ⌘0")
 
+            if !recentSessions.isEmpty {
+                Section("Recent") {
+                    ForEach(recentSessions) { session in
+                        Button {
+                            selectedSession = session
+                        } label: {
+                            sessionRow(session, baseBranch: baseBranch(for: session))
+                        }
+                        .buttonStyle(.plain)
+                        .listRowBackground(
+                            selectedSession?.id == session.id
+                                ? Palette.bgSelection
+                                : Color.clear
+                        )
+                        .contextMenu { sessionContextMenu(session) }
+                    }
+                }
+            }
+
             ForEach(projectList.projects) { project in
                 Section {
                     let sessions = projectList.sessions(for: project.id)
@@ -137,6 +156,21 @@ struct SidebarView: View {
     }
 
     @State private var droppedPath: String? = nil
+
+    /// Recently-touched sessions across every project — the flat
+    /// "watch and resume" rail at the top of the sidebar.
+    private var recentSessions: [Session] {
+        projectList.sessionsByProject.values
+            .flatMap { $0 }
+            .filter { $0.status != .archived }
+            .sorted { $0.updatedAt > $1.updatedAt }
+            .prefix(6)
+            .map { $0 }
+    }
+
+    private func baseBranch(for session: Session) -> String {
+        projectList.projects.first { $0.id == session.projectId }?.defaultBaseBranch ?? "main"
+    }
 
     private func projectHeader(_ project: Project) -> some View {
         let pendingCount = projectList.sessions(for: project.id)

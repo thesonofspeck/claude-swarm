@@ -221,6 +221,8 @@ struct TerminalTab: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(RunningSessionRegistry.self) private var registry
     let session: Session
+    @State private var resuming = false
+    @State private var resumeError: String?
 
     var body: some View {
         Group {
@@ -232,16 +234,61 @@ struct TerminalTab: View {
                     }
                 }
             } else {
-                EmptyState(
-                    title: "Session not running",
-                    systemImage: "powerplug",
-                    description: "This session was started in a previous app launch. Open the Transcript tab to read its scrollback.",
-                    tint: Palette.fgMuted
-                )
+                resumeView
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Palette.bgBase)
+    }
+
+    private var resumeView: some View {
+        VStack(spacing: Metrics.Space.lg) {
+            EmptyState(
+                title: "Session paused",
+                systemImage: "powerplug",
+                description: "This conversation isn't running. Resume picks up the exact Claude Code transcript where you left off.",
+                tint: Palette.fgMuted
+            )
+            Button {
+                Task { await resume() }
+            } label: {
+                if resuming {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Resuming…")
+                    }
+                } else {
+                    Label("Resume conversation", systemImage: "play.fill")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(resuming)
+            if let resumeError {
+                Label(resumeError, systemImage: "exclamationmark.triangle.fill")
+                    .font(Type.caption)
+                    .foregroundStyle(Palette.red)
+            }
+        }
+        .padding(.bottom, Metrics.Space.xl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func resume() async {
+        resuming = true
+        resumeError = nil
+        defer { resuming = false }
+        do {
+            let claude = env.settings.claudeExecutable.isEmpty
+                ? "/usr/local/bin/claude"
+                : env.settings.claudeExecutable
+            let spec = try await env.sessionManager.resumeSpec(for: session, claudeExecutable: claude)
+            registry.register(spec)
+            registry.setForeground(session.id)
+            try? env.sessionsRepo.setStatus(id: session.id, .running)
+        } catch {
+            resumeError = error.localizedDescription
+        }
     }
 }
 

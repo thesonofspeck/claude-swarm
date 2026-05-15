@@ -9,6 +9,20 @@ public actor SessionManager {
         public let spec: SessionSpec
     }
 
+    public enum SessionError: Error, LocalizedError {
+        case projectMissing
+        case worktreeMissing(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .projectMissing:
+                return "The project for this session no longer exists."
+            case .worktreeMissing(let path):
+                return "The worktree is gone (\(path)) — nothing to resume."
+            }
+        }
+    }
+
     public let sessions: SessionRepository
     public let projects: ProjectRepository
     public let worktrees: WorktreeService
@@ -115,6 +129,9 @@ public actor SessionManager {
             taskTitle: taskTitle,
             initialPrompt: composedPrompt.isEmpty ? nil : composedPrompt,
             claudeExecutable: claudeExecutable,
+            // Pin the Claude Code conversation id to our session id so
+            // the session row maps 1:1 to a resumable conversation.
+            claudeArguments: ["--session-id", sessionId],
             environment: env,
             transcriptURL: transcriptURL
         )
@@ -122,6 +139,44 @@ public actor SessionManager {
         session.status = .running
         try sessions.upsert(session)
         return StartResult(session: session, spec: spec)
+    }
+
+    /// Build a spec that resumes an existing session's Claude Code
+    /// conversation (`claude --resume <id>`) instead of starting a fresh
+    /// one. The session id doubles as the conversation id, so resuming
+    /// reattaches to the exact transcript the user left.
+    public func resumeSpec(
+        for session: Session,
+        claudeExecutable: String = "/usr/local/bin/claude"
+    ) throws -> SessionSpec {
+        guard let project = try projects.find(id: session.projectId) else {
+            throw SessionError.projectMissing
+        }
+        let worktreeURL = URL(fileURLWithPath: session.worktreePath)
+        guard FileManager.default.fileExists(atPath: worktreeURL.path) else {
+            throw SessionError.worktreeMissing(session.worktreePath)
+        }
+        let env = [
+            "CLAUDE_SWARM_SESSION_ID": session.id,
+            "CLAUDE_SWARM_PROJECT_ID": project.id,
+            "CLAUDE_SWARM_HOOK_SOCKET": AppDirectories.hooksSocket.path
+        ]
+        return SessionSpec(
+            id: session.id,
+            projectId: project.id,
+            projectName: project.name,
+            repoURL: URL(fileURLWithPath: project.localPath),
+            worktreeURL: worktreeURL,
+            branch: session.branch,
+            baseBranch: project.defaultBaseBranch,
+            taskId: session.taskId,
+            taskTitle: session.taskTitle,
+            initialPrompt: nil,
+            claudeExecutable: claudeExecutable,
+            claudeArguments: ["--resume", session.id],
+            environment: env,
+            transcriptURL: URL(fileURLWithPath: session.transcriptPath)
+        )
     }
 
     public func mark(sessionId: String, status: SessionStatus) throws {
