@@ -51,20 +51,37 @@ enum DetailTab: String, CaseIterable, Identifiable {
     }
 }
 
+/// One open pane in the detail area. Each pane independently chooses
+/// which tool it shows; the first pane is the clean default the session
+/// opens to.
+struct DetailPane: Identifiable, Equatable {
+    let id = UUID()
+    var tab: DetailTab
+}
+
 struct DetailView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(RunningSessionRegistry.self) private var registry
     let session: Session
-    @State private var tab: DetailTab = .terminal
+    @State private var panes: [DetailPane] = [DetailPane(tab: .terminal)]
     @State private var project: Project?
 
+    private static let maxPanes = 4
+
     var body: some View {
-        VStack(spacing: 0) {
-            tabBar
-            Divider()
-            content
-                .transition(.opacity.combined(with: .move(edge: .trailing)))
-                .animation(.easeInOut(duration: 0.18), value: tab)
+        HSplitView {
+            ForEach($panes) { $pane in
+                DetailPaneView(
+                    session: session,
+                    project: project,
+                    tab: $pane.tab,
+                    canClose: panes.count > 1,
+                    canSplit: panes.count < Self.maxPanes,
+                    onSplit: { splitPane(after: pane.id) },
+                    onClose: { closePane(pane.id) }
+                )
+                .frame(minWidth: 360)
+            }
         }
         .onChange(of: session.id) { _, newId in
             registry.setForeground(newId)
@@ -73,27 +90,109 @@ struct DetailView: View {
             project = try? env.projects.find(id: session.projectId)
         }
         .onReceive(NotificationCenter.default.publisher(for: .swarmSelectTab)) { note in
+            // Menu / keyboard tab selection retargets the first pane so
+            // ⌘1–⌘6 still land somewhere predictable.
             if let raw = note.object as? String, let t = DetailTab(rawValue: raw) {
-                tab = t
+                if panes.isEmpty {
+                    panes = [DetailPane(tab: t)]
+                } else {
+                    panes[0].tab = t
+                }
             }
         }
     }
 
-    private var tabBar: some View {
-        Picker("Tab", selection: $tab) {
-            ForEach(DetailTab.allCases) { t in
-                Label(t.label, systemImage: t.systemImage).tag(t)
+    private func splitPane(after id: DetailPane.ID) {
+        guard panes.count < Self.maxPanes,
+              let idx = panes.firstIndex(where: { $0.id == id }) else { return }
+        // A new pane defaults to Diff — the most common companion to the
+        // terminal — and the user retargets it from the pane menu.
+        let existing = Set(panes.map(\.tab))
+        let suggested: DetailTab = existing.contains(.diff) ? .files : .diff
+        withAnimation(.easeInOut(duration: 0.18)) {
+            panes.insert(DetailPane(tab: suggested), at: idx + 1)
+        }
+    }
+
+    private func closePane(_ id: DetailPane.ID) {
+        guard panes.count > 1 else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            panes.removeAll { $0.id == id }
+        }
+    }
+}
+
+/// A single pane: a slim header (tool picker + split / close) over the
+/// tool's content. Keeps the existing tab views unchanged — this is
+/// purely a layout shell so the detail area reads as "one clean view,
+/// split in more as needed" instead of a 15-tab strip.
+struct DetailPaneView: View {
+    let session: Session
+    let project: Project?
+    @Binding var tab: DetailTab
+    let canClose: Bool
+    let canSplit: Bool
+    let onSplit: () -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider().background(Palette.divider)
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.15), value: tab)
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: Metrics.Space.sm) {
+            Menu {
+                ForEach(DetailTab.allCases) { t in
+                    Button {
+                        tab = t
+                    } label: {
+                        Label(t.label, systemImage: t.systemImage)
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: tab.systemImage)
+                        .foregroundStyle(Palette.fgMuted)
+                    Text(tab.label)
+                        .font(Type.body.weight(.medium))
+                        .foregroundStyle(Palette.fgBright)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Palette.fgMuted)
+                }
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+
+            Spacer()
+
+            if canSplit {
+                Button(action: onSplit) {
+                    Image(systemName: "rectangle.split.2x1")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Palette.fgMuted)
+                .help("Split — open another tool alongside")
+            }
+            if canClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Palette.fgMuted)
+                .help("Close pane")
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .padding(Metrics.Space.sm)
+        .padding(.horizontal, Metrics.Space.md)
+        .padding(.vertical, 6)
         .background(Palette.bgSidebar)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Palette.divider)
-                .frame(height: Metrics.Stroke.hairline)
-        }
     }
 
     @ViewBuilder
