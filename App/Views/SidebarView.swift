@@ -46,7 +46,7 @@ struct SidebarView: View {
                         .padding(.vertical, Metrics.Space.xs)
                     } else {
                         ForEach(sessions) { session in
-                            sessionRow(session).tag(session)
+                            sessionRow(session, baseBranch: project.defaultBaseBranch).tag(session)
                                 .contextMenu { sessionContextMenu(session) }
                         }
                         Button {
@@ -155,32 +155,85 @@ struct SidebarView: View {
     }
 
     @ViewBuilder
-    private func sessionRow(_ session: Session) -> some View {
+    private func sessionRow(_ session: Session, baseBranch: String) -> some View {
         let needsInput = notifier.pendingSessionIds.contains(session.id)
-        HStack(spacing: Metrics.Space.sm) {
+        let stat = env.sessionStats.stat(for: session.id)
+        HStack(alignment: .top, spacing: Metrics.Space.sm) {
             if needsInput {
                 PulseDot(color: Palette.yellow)
+                    .padding(.top, 4)
             } else {
                 Image(systemName: statusIcon(session.status))
                     .imageScale(.small)
                     .foregroundStyle(statusColor(session.status))
-                    .frame(width: 8)
+                    .frame(width: 10)
+                    .padding(.top, 3)
             }
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(session.taskTitle ?? session.branch)
-                    .font(Type.body)
-                    .foregroundStyle(Palette.fg)
-                    .lineLimit(1)
-                Text(session.branch)
-                    .font(Type.monoCaption)
-                    .foregroundStyle(Palette.fgMuted)
-                    .lineLimit(1)
+                    .font(Type.body.weight(.medium))
+                    .foregroundStyle(Palette.fgBright)
+                    .lineLimit(2)
+                HStack(spacing: 6) {
+                    Text(statusLabel(session.status))
+                        .font(Type.label)
+                        .foregroundStyle(statusColor(session.status))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(
+                            Capsule().fill(statusColor(session.status).opacity(0.14))
+                        )
+                    Text(session.branch)
+                        .font(Type.monoCaption)
+                        .foregroundStyle(Palette.fgMuted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 0)
+                    if let stat, !stat.isEmpty {
+                        HStack(spacing: 4) {
+                            Text("+\(stat.added)")
+                                .foregroundStyle(Palette.green)
+                            Text("−\(stat.removed)")
+                                .foregroundStyle(Palette.red)
+                        }
+                        .font(Type.monoCaption)
+                    }
+                }
             }
         }
-        .padding(.vertical, 2)
-        .accessibilityLabel(needsInput
-            ? "\(session.taskTitle ?? session.branch). Needs input."
-            : (session.taskTitle ?? session.branch))
+        .padding(.vertical, 3)
+        .task(id: session.updatedAt) {
+            await env.sessionStats.ensure(
+                sessionId: session.id,
+                worktreePath: session.worktreePath,
+                baseBranch: baseBranch,
+                force: true
+            )
+        }
+        .accessibilityLabel(accessibilityText(session, needsInput: needsInput, stat: stat))
+    }
+
+    private func accessibilityText(_ session: Session, needsInput: Bool, stat: SessionStatStore.Stat?) -> String {
+        var parts = [session.taskTitle ?? session.branch, statusLabel(session.status)]
+        if needsInput { parts.append("Needs input") }
+        if let stat, !stat.isEmpty {
+            parts.append("\(stat.added) added, \(stat.removed) removed")
+        }
+        return parts.joined(separator: ". ")
+    }
+
+    private func statusLabel(_ status: SessionStatus) -> String {
+        switch status {
+        case .starting: return "starting"
+        case .running: return "running"
+        case .waitingForInput: return "waiting"
+        case .idle: return "idle"
+        case .finished: return "done"
+        case .archived: return "archived"
+        case .prOpen: return "PR open"
+        case .merged: return "merged"
+        case .failed: return "failed"
+        }
     }
 
     private func statusIcon(_ status: SessionStatus) -> String {

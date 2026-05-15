@@ -44,6 +44,8 @@ public final class AppEnvironment {
     /// whatever `~/.kube/config` already points at (typically configured
     /// via `aws eks update-kubeconfig`).
     public let kubectl: KubectlClient
+    /// Cached per-session diff stats for the sidebar task cards.
+    public let sessionStats: SessionStatStore
     /// Implicitly-unwrapped because it's assigned after all the other
     /// stored properties — its closure captures `self`, which Swift 6
     /// will only allow once every other `let` property is initialized.
@@ -113,6 +115,9 @@ public final class AppEnvironment {
         self.library = LibraryStore(teamSource: libSource)
         self.activity = ActivityLog(db: db)
         self.kubectl = KubectlClient()
+        self.sessionStats = SessionStatStore(
+            gitExecutable: appSettings.gitExecutable.isEmpty ? "/usr/bin/git" : appSettings.gitExecutable
+        )
         self.welcomeFeed = WelcomeFeed(
             projects: projects,
             sessionsRepo: sessionsRepo,
