@@ -23,6 +23,9 @@ struct FilesTab: View {
     @State private var newFileSheet: Bool = false
     @State private var scrollToLine: Int? = nil
     @State private var jumpHint: String? = nil
+    /// Highlighted form of the loaded file, computed once at load time
+    /// for `.swift` — keeps the expensive Splash pass out of `body`.
+    @State private var highlighted: AttributedString?
 
     private var navigator: SymbolNavigator {
         SymbolNavigator(
@@ -32,9 +35,7 @@ struct FilesTab: View {
         )
     }
 
-    private var isSwift: Bool { fileExtension == "swift" }
-
-    private func highlightedSwift(_ source: String) -> AttributedString? {
+    private static func highlightedSwift(_ source: String) -> AttributedString? {
         let highlighter = SyntaxHighlighter(format: AttributedStringOutputFormat(theme: AtomSplashTheme.current()))
         let attr = highlighter.highlight(source)
         return try? AttributedString(attr, including: \.appKit)
@@ -158,6 +159,7 @@ struct FilesTab: View {
                 fileContents = ""
                 fileExtension = ""
                 loadedURL = nil
+                highlighted = nil
                 editing = false
                 dirty = false
                 return
@@ -271,7 +273,7 @@ struct FilesTab: View {
                 .background(Palette.bgBase)
             } else {
                 ScrollView {
-                    if isSwift, let highlighted = highlightedSwift(fileContents) {
+                    if let highlighted {
                         Text(highlighted)
                             .font(Type.mono)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -367,6 +369,10 @@ struct FilesTab: View {
             }
             fileContents = text
             loadedURL = url
+            // Highlight once at load time, not on every `body` pass.
+            highlighted = url.pathExtension.lowercased() == "swift"
+                ? Self.highlightedSwift(text)
+                : nil
             loadingFile = false
         } catch {
             self.error = "\(error.localizedDescription)"
