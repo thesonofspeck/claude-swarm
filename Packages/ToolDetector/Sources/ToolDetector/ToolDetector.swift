@@ -147,9 +147,13 @@ public actor ToolDetector {
             } catch {
                 return ("", error.localizedDescription)
             }
+            // Drain concurrently before waiting to avoid a pipe-buffer
+            // deadlock on a verbose `--version` probe.
+            let outReader = Task.detached { (try? outPipe.fileHandleForReading.readToEnd()) ?? Data() }
+            let errReader = Task.detached { (try? errPipe.fileHandleForReading.readToEnd()) ?? Data() }
+            let outData = await outReader.value
+            let errData = await errReader.value
             process.waitUntilExit()
-            let outData = (try? outPipe.fileHandleForReading.readToEnd()) ?? Data()
-            let errData = (try? errPipe.fileHandleForReading.readToEnd()) ?? Data()
             return (
                 String(decoding: outData, as: UTF8.self),
                 String(decoding: errData, as: UTF8.self)

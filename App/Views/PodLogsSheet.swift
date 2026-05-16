@@ -14,7 +14,7 @@ struct PodLogsSheet: View {
     let context: String?
     let namespace: String?
 
-    @State private var lines: [String] = []
+    @State private var lines: [LogLine] = []
     @State private var task: Task<Void, Never>?
     @State private var following: Bool = true
     @State private var error: String?
@@ -67,7 +67,7 @@ struct PodLogsSheet: View {
             .buttonStyle(.bordered)
             Button {
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
+                NSPasteboard.general.setString(lines.map(\.text).joined(separator: "\n"), forType: .string)
             } label: {
                 Label("Copy", systemImage: "doc.on.doc")
             }
@@ -87,15 +87,14 @@ struct PodLogsSheet: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(lines.enumerated()), id: \.offset) { idx, line in
-                        Text(line)
+                    ForEach(lines) { line in
+                        Text(line.text)
                             .font(Type.mono)
                             .foregroundStyle(Palette.fg)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
                             .padding(.horizontal, Metrics.Space.md)
                             .padding(.vertical, 1)
-                            .id(idx)
                     }
                     Color.clear.frame(height: 1).id("__bottom__")
                 }
@@ -158,7 +157,9 @@ struct PodLogsSheet: View {
     }
 
     private func append(_ chunk: String) {
-        let newLines = chunk.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let newLines = chunk
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { LogLine(text: String($0)) }
         lines.append(contentsOf: newLines)
         if lines.count > Self.maxLines {
             lines.removeFirst(lines.count - Self.maxLines)
@@ -172,4 +173,11 @@ struct PodLogsSheet: View {
             pendingBuffer = ""
         }
     }
+}
+
+/// One log line with a stable identity so trimming the 5k-line buffer
+/// doesn't reshuffle every row's id and force a full LazyVStack rebuild.
+struct LogLine: Identifiable {
+    let id = UUID()
+    let text: String
 }

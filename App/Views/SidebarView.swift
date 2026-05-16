@@ -241,7 +241,7 @@ struct SidebarView: View {
                 sessionId: session.id,
                 worktreePath: session.worktreePath,
                 baseBranch: baseBranch,
-                force: true
+                stamp: session.updatedAt
             )
         }
         .accessibilityLabel(accessibilityText(session, needsInput: needsInput, stat: stat))

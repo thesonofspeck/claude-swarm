@@ -18,7 +18,6 @@ struct FilesTab: View {
     @State private var quickLookURL: URL?
     @State private var editing = false
     @State private var dirty = false
-    @State private var saving = false
     @State private var loadedURL: URL?
     @State private var showTree: Bool = true
     @State private var newFileSheet: Bool = false
@@ -68,10 +67,15 @@ struct FilesTab: View {
         .task(id: session.id) {
             let ws = env.gitWorkspace(for: session.worktreePath)
             for await invalidations in ws.pulse.events() {
-                if invalidations.contains(.files) || invalidations.contains(.status) {
+                // The file *tree* only changes on add/delete/rename
+                // (`.files`); a plain content edit (`.status`) leaves the
+                // structure intact, so don't pay a full directory walk
+                // for it. The symbol index does need content changes,
+                // but its refresh is mtime-incremental and cheap.
+                if invalidations.contains(.files) {
                     await loadTree()
-                    // Mtime-based incremental refresh — only re-parses
-                    // the files whose modification timestamp moved.
+                }
+                if invalidations.contains(.files) || invalidations.contains(.status) {
                     await env.symbolIndex(for: session.worktreePath).refresh()
                 }
             }
@@ -199,14 +203,13 @@ struct FilesTab: View {
             Spacer()
             if loadedURL != nil {
                 if editing {
-                    if saving { ProgressView().controlSize(.small) }
                     Button {
                         save()
                     } label: {
                         Label("Save", systemImage: "checkmark.circle.fill")
                     }
                     .keyboardShortcut("s", modifiers: .command)
-                    .disabled(!dirty || saving)
+                    .disabled(!dirty)
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     Button {
@@ -291,8 +294,6 @@ struct FilesTab: View {
 
     private func save() {
         guard let url = loadedURL else { return }
-        saving = true
-        defer { saving = false }
         do {
             try fileContents.write(to: url, atomically: true, encoding: .utf8)
             dirty = false

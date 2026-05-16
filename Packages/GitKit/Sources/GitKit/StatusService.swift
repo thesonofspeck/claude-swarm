@@ -168,17 +168,22 @@ extension GitRunner {
             process.currentDirectoryURL = directory
             let inPipe = Pipe()
             let errPipe = Pipe()
+            let outPipe = Pipe()
             process.standardInput = inPipe
             process.standardError = errPipe
-            process.standardOutput = Pipe()
+            process.standardOutput = outPipe
             do { try process.run() } catch { throw GitError.launchFailed("\(error)") }
+            // Drain both output streams before waiting so a noisy
+            // `git apply` can't fill a pipe and deadlock the wait.
+            let outReader = Task.detached { _ = try? outPipe.fileHandleForReading.readToEnd() }
+            let errReader = Task.detached { (try? errPipe.fileHandleForReading.readToEnd()) ?? Data() }
             try? inPipe.fileHandleForWriting.write(contentsOf: Data(stdin.utf8))
             try? inPipe.fileHandleForWriting.close()
+            _ = await outReader.value
+            let errData = await errReader.value
             process.waitUntilExit()
             if process.terminationStatus != 0 {
-                let err = (try? errPipe.fileHandleForReading.readToEnd()).flatMap {
-                    String(data: $0, encoding: .utf8)
-                } ?? ""
+                let err = String(data: errData, encoding: .utf8) ?? ""
                 throw GitError.nonZeroExit(code: process.terminationStatus, stderr: err)
             }
         }.value

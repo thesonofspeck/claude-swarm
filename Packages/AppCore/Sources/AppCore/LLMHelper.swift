@@ -256,34 +256,52 @@ public final class LLMHelper {
             let errPipe = Pipe()
             process.standardOutput = outPipe
             process.standardError = errPipe
+            let outHandle = outPipe.fileHandleForReading
+            let errHandle = errPipe.fileHandleForReading
+            // stderr is drained continuously into this box — without an
+            // active reader a `claude` process that writes >64KB of
+            // warnings to stderr blocks on write and never exits,
+            // hanging the stream forever.
+            let errBuffer = DataAccumulator()
 
-            outPipe.fileHandleForReading.readabilityHandler = { handle in
+            outHandle.readabilityHandler = { handle in
                 let data = handle.availableData
                 if data.isEmpty { return }
                 if let chunk = String(data: data, encoding: .utf8), !chunk.isEmpty {
                     continuation.yield(chunk)
                 }
             }
+            errHandle.readabilityHandler = { handle in
+                let data = handle.availableData
+                if data.isEmpty {
+                    handle.readabilityHandler = nil
+                } else {
+                    errBuffer.append(data)
+                }
+            }
 
             process.terminationHandler = { proc in
-                outPipe.fileHandleForReading.readabilityHandler = nil
+                outHandle.readabilityHandler = nil
+                errHandle.readabilityHandler = nil
                 if proc.terminationStatus == 0 {
                     continuation.finish()
                 } else {
-                    let errData = (try? errPipe.fileHandleForReading.readToEnd()) ?? Data()
-                    let stderr = String(decoding: errData, as: UTF8.self)
+                    let stderr = String(decoding: errBuffer.snapshot(), as: UTF8.self)
                     continuation.finish(throwing: LLMError.nonZero(code: proc.terminationStatus, stderr: stderr))
                 }
             }
 
             continuation.onTermination = { _ in
-                outPipe.fileHandleForReading.readabilityHandler = nil
+                outHandle.readabilityHandler = nil
+                errHandle.readabilityHandler = nil
                 if process.isRunning { process.terminate() }
             }
 
             do {
                 try process.run()
             } catch {
+                outHandle.readabilityHandler = nil
+                errHandle.readabilityHandler = nil
                 continuation.finish(throwing: LLMError.transport("\(error)"))
             }
         }
@@ -481,5 +499,23 @@ public final class LLMHelper {
         }
         let body = bodyLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         return PRDraft(title: title.isEmpty ? fallbackTitle : title, body: body)
+    }
+}
+
+/// Thread-safe `Data` accumulator for subprocess pipe drains — a
+/// `FileHandle.readabilityHandler` fires on a background queue, so
+/// appends must be locked.
+final class DataAccumulator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+
+    func append(_ chunk: Data) {
+        lock.lock(); defer { lock.unlock() }
+        data.append(chunk)
+    }
+
+    func snapshot() -> Data {
+        lock.lock(); defer { lock.unlock() }
+        return data
     }
 }

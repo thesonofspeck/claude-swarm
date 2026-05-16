@@ -50,6 +50,23 @@ public struct KubectlRunner: Sendable {
         return "/usr/bin/env"
     }
 
+    /// Assemble the full argv: `kubectl` prefix when resolved to `env`,
+    /// then `--context` / `--namespace`, then the caller's args.
+    private func buildArgs(context: String?, namespace: String?, args: [String]) -> [String] {
+        var full: [String] = []
+        if executable.hasSuffix("/env") {
+            full.append("kubectl")
+        }
+        if let context, !context.isEmpty {
+            full.append(contentsOf: ["--context", context])
+        }
+        if let namespace, !namespace.isEmpty {
+            full.append(contentsOf: ["--namespace", namespace])
+        }
+        full.append(contentsOf: args)
+        return full
+    }
+
     @discardableResult
     public func run(
         _ args: [String],
@@ -58,19 +75,7 @@ public struct KubectlRunner: Sendable {
         env: [String: String]? = nil,
         timeout: TimeInterval = 30
     ) async throws -> KubectlResult {
-        var fullArgs: [String] = []
-        if executable.hasSuffix("/env") {
-            fullArgs.append("kubectl")
-        }
-        if let context, !context.isEmpty {
-            fullArgs.append("--context")
-            fullArgs.append(context)
-        }
-        if let namespace, !namespace.isEmpty {
-            fullArgs.append("--namespace")
-            fullArgs.append(namespace)
-        }
-        fullArgs.append(contentsOf: args)
+        let fullArgs = buildArgs(context: context, namespace: namespace, args: args)
 
         return try await Task.detached { [executable] in
             let process = Process()
@@ -89,19 +94,29 @@ public struct KubectlRunner: Sendable {
                 throw KubectlError.launchFailed("\(error)")
             }
 
-            // Cooperative timeout: terminate the process if it overruns.
-            let deadline = Date().addingTimeInterval(timeout)
-            while process.isRunning {
-                if Date() > deadline {
-                    process.terminate()
-                    break
-                }
-                try? await Task.sleep(nanoseconds: 50_000_000)
-            }
-            process.waitUntilExit()
+            // Drain both pipes on background threads so a large
+            // `kubectl get -o json` can't fill a pipe and deadlock.
+            let outReader = Task.detached { (try? outPipe.fileHandleForReading.readToEnd()) ?? Data() }
+            let errReader = Task.detached { (try? errPipe.fileHandleForReading.readToEnd()) ?? Data() }
 
-            let outData = (try? outPipe.fileHandleForReading.readToEnd()) ?? Data()
-            let errData = (try? errPipe.fileHandleForReading.readToEnd()) ?? Data()
+            // Watchdog terminates the process if it overruns its budget;
+            // termination closes the pipes, which unblocks the readers.
+            let watchdog = Task {
+                let deadline = Date().addingTimeInterval(timeout)
+                while process.isRunning {
+                    if Date() > deadline {
+                        process.terminate()
+                        return
+                    }
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                }
+            }
+
+            let outData = await outReader.value
+            let errData = await errReader.value
+            process.waitUntilExit()
+            watchdog.cancel()
+
             let result = KubectlResult(
                 stdout: String(decoding: outData, as: UTF8.self),
                 stderr: String(decoding: errData, as: UTF8.self),
@@ -142,21 +157,8 @@ public struct KubectlRunner: Sendable {
         namespace: String? = nil,
         env: [String: String]? = nil
     ) -> AsyncThrowingStream<String, Error> {
-        var fullArgs: [String] = []
-        if executable.hasSuffix("/env") {
-            fullArgs.append("kubectl")
-        }
-        if let context, !context.isEmpty {
-            fullArgs.append("--context")
-            fullArgs.append(context)
-        }
-        if let namespace, !namespace.isEmpty {
-            fullArgs.append("--namespace")
-            fullArgs.append(namespace)
-        }
-        fullArgs.append(contentsOf: args)
+        let resolvedArgs = buildArgs(context: context, namespace: namespace, args: args)
         let executablePath = executable
-        let resolvedArgs = fullArgs
 
         return AsyncThrowingStream { continuation in
             let process = Process()
@@ -168,8 +170,9 @@ public struct KubectlRunner: Sendable {
             // Merge stderr into stdout — log viewers want everything.
             process.standardOutput = outPipe
             process.standardError = outPipe
+            let readHandle = outPipe.fileHandleForReading
 
-            outPipe.fileHandleForReading.readabilityHandler = { handle in
+            readHandle.readabilityHandler = { handle in
                 let data = handle.availableData
                 if data.isEmpty {
                     continuation.finish()
@@ -181,12 +184,12 @@ public struct KubectlRunner: Sendable {
             }
 
             process.terminationHandler = { _ in
-                outPipe.fileHandleForReading.readabilityHandler = nil
+                readHandle.readabilityHandler = nil
                 continuation.finish()
             }
 
             continuation.onTermination = { _ in
-                outPipe.fileHandleForReading.readabilityHandler = nil
+                readHandle.readabilityHandler = nil
                 if process.isRunning {
                     process.terminate()
                 }
@@ -195,6 +198,9 @@ public struct KubectlRunner: Sendable {
             do {
                 try process.run()
             } catch {
+                // Clear the handler so the pipe FD is released — without
+                // this the readabilityHandler leaks on launch failure.
+                readHandle.readabilityHandler = nil
                 continuation.finish(throwing: KubectlError.launchFailed("\(error)"))
             }
         }

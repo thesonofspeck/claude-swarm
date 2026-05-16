@@ -82,14 +82,21 @@ public struct GhRunner: Sendable {
             } catch {
                 throw GhError.notInstalled
             }
+
+            // Drain both pipes on background threads concurrently with
+            // the stdin write — a `gh` command emitting more than the
+            // ~64KB pipe buffer (e.g. `gh pr diff` of a large PR) would
+            // otherwise block on write while we block on waitUntilExit.
+            let outReader = Task.detached { (try? outPipe.fileHandleForReading.readToEnd()) ?? Data() }
+            let errReader = Task.detached { (try? errPipe.fileHandleForReading.readToEnd()) ?? Data() }
             if let stdin {
                 try? inPipe.fileHandleForWriting.write(contentsOf: stdin)
             }
             try? inPipe.fileHandleForWriting.close()
+            let outData = await outReader.value
+            let errData = await errReader.value
             process.waitUntilExit()
 
-            let outData = (try? outPipe.fileHandleForReading.readToEnd()) ?? Data()
-            let errData = (try? errPipe.fileHandleForReading.readToEnd()) ?? Data()
             let result = GhResult(
                 stdout: String(decoding: outData, as: UTF8.self),
                 stderr: String(decoding: errData, as: UTF8.self),

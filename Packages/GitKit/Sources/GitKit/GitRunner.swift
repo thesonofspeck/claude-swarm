@@ -50,10 +50,17 @@ public struct GitRunner: Sendable {
             } catch {
                 throw GitError.launchFailed("\(error)")
             }
+
+            // Drain both pipes on background threads *before* waiting —
+            // a child writing more than the ~64KB pipe buffer to either
+            // stream would otherwise block on write while we block on
+            // waitUntilExit, deadlocking until nothing.
+            let outReader = Task.detached { (try? outPipe.fileHandleForReading.readToEnd()) ?? Data() }
+            let errReader = Task.detached { (try? errPipe.fileHandleForReading.readToEnd()) ?? Data() }
+            let outData = await outReader.value
+            let errData = await errReader.value
             process.waitUntilExit()
 
-            let outData = (try? outPipe.fileHandleForReading.readToEnd()) ?? Data()
-            let errData = (try? errPipe.fileHandleForReading.readToEnd()) ?? Data()
             let result = GitResult(
                 stdout: String(decoding: outData, as: UTF8.self),
                 stderr: String(decoding: errData, as: UTF8.self),

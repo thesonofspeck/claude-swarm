@@ -22,8 +22,8 @@ public final class SessionStatStore {
         }
     }
 
-    private var cache: [String: Stat] = [:]
-    private var inFlight: Set<String> = []
+    private var cache: [String: (stamp: Date, stat: Stat)] = [:]
+    private var tasks: [String: Task<Stat, Never>] = [:]
     private let gitExecutable: String
 
     public init(gitExecutable: String = "/usr/bin/git") {
@@ -31,27 +31,32 @@ public final class SessionStatStore {
     }
 
     public func stat(for sessionId: String) -> Stat? {
-        cache[sessionId]
+        cache[sessionId]?.stat
     }
 
-    /// Compute (or recompute, when `force`) the diff stat for a session.
-    /// Coalesces concurrent requests for the same session.
+    /// Compute the diff stat for a session if it hasn't been computed
+    /// for `stamp` (the session's `updatedAt`) yet. A re-run for the
+    /// same stamp is a no-op, so a row re-appearing on scroll is free;
+    /// a newer stamp recomputes. Concurrent callers share one task.
     public func ensure(
         sessionId: String,
         worktreePath: String,
         baseBranch: String,
-        force: Bool = false
+        stamp: Date
     ) async {
-        if inFlight.contains(sessionId) { return }
-        if !force, cache[sessionId] != nil { return }
-        inFlight.insert(sessionId)
-        let result = await Self.compute(
-            worktreePath: worktreePath,
-            baseBranch: baseBranch,
-            gitExecutable: gitExecutable
-        )
-        inFlight.remove(sessionId)
-        cache[sessionId] = result
+        if let cached = cache[sessionId], cached.stamp >= stamp { return }
+        if let existing = tasks[sessionId] {
+            _ = await existing.value
+            return
+        }
+        let exec = gitExecutable
+        let task = Task {
+            await Self.compute(worktreePath: worktreePath, baseBranch: baseBranch, gitExecutable: exec)
+        }
+        tasks[sessionId] = task
+        let result = await task.value
+        tasks[sessionId] = nil
+        cache[sessionId] = (stamp, result)
     }
 
     private static func compute(
