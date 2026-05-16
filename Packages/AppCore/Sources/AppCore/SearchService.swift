@@ -169,12 +169,9 @@ public actor SearchService {
         let lower16 = lower.utf16.distance(from: lower.utf16.startIndex, to: range.lowerBound.samePosition(in: lower.utf16) ?? lower.utf16.startIndex)
         let start = max(0, lower16 - 40)
         let end = min(text.utf16.count, lower16 + needle.utf16.count + 80)
-        let s = text.utf16.index(text.utf16.startIndex, offsetBy: start)
-        let e = text.utf16.index(text.utf16.startIndex, offsetBy: end)
         guard let r = Range(NSRange(location: start, length: end - start), in: text) else {
             return String(text.prefix(120))
         }
-        _ = (s, e)
         return String(text[r]).replacingOccurrences(of: "\n", with: " ")
     }
 

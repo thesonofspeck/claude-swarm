@@ -166,7 +166,5 @@ struct NewSessionContext: Identifiable {
 }
 
 extension Notification.Name {
-    static let swarmNewSession = Notification.Name("ClaudeSwarm.NewSession")
-    static let swarmCommandPalette = Notification.Name("ClaudeSwarm.CommandPalette")
     static let swarmShowWorktreeJanitor = Notification.Name("ClaudeSwarm.ShowWorktreeJanitor")
 }

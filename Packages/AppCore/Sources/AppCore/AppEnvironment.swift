@@ -229,17 +229,20 @@ public final class AppEnvironment {
                 if let status = event.resultingStatus {
                     try? repoRef.setStatus(id: id, status)
                 }
+                // Look up session + project once — PostToolUse fires per
+                // Edit/Write/Bash, so re-reading the DB three times per
+                // event added up.
                 let session = try? repoRef.find(id: id)
+                let project = session.flatMap { try? projectsRef.find(id: $0.projectId) }
                 try? activityRef.append(ActivityEvent(
                     sessionId: id,
                     projectId: session?.projectId,
                     kind: event.kind.rawValue,
                     message: event.message
                 ))
-                // PostToolUse fires after every Edit/Write/Bash. Hand it
-                // straight to the matching workspace's pulse so all open
-                // tabs reload immediately — typically before FSEvents has
-                // even propagated the on-disk change.
+                // PostToolUse: hand the change straight to the matching
+                // workspace's pulse so all open tabs reload immediately —
+                // typically before FSEvents has even propagated it.
                 if event.kind == .postToolUse, let session, let self {
                     let ws = self.gitWorkspace(for: session.worktreePath)
                     ws.invalidate([.status, .files, .history])
@@ -252,9 +255,7 @@ public final class AppEnvironment {
                         body: event.message ?? "",
                         isForeground: isForeground
                     )
-                    if let session = try? repoRef.find(id: id),
-                       let project = try? projectsRef.find(id: session.projectId),
-                       let remote = remoteRef {
+                    if let session, let project, let remote = remoteRef {
                         // Stable id derived from sessionId + prompt so a
                         // hook firing twice (retry / reconnect) collapses
                         // into a single APNs alert.
@@ -271,9 +272,7 @@ public final class AppEnvironment {
                         remote.broadcastApproval(approval)
                     }
                 }
-                if let remote = remoteRef,
-                   let session = try? repoRef.find(id: id),
-                   let project = try? projectsRef.find(id: session.projectId) {
+                if let remote = remoteRef, let session, let project {
                     let payload = SessionSummary(
                         id: session.id,
                         projectId: session.projectId,

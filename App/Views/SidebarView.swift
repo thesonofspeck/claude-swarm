@@ -11,6 +11,7 @@ struct SidebarView: View {
     @Binding var newSessionProjectId: String?
     @State private var showingAddProject = false
     @State private var showingSettings = false
+    @State private var droppedPath: String? = nil
 
     var body: some View {
         List(selection: $selectedSession) {
@@ -154,8 +155,6 @@ struct SidebarView: View {
             projectList.remove(projectId: project.id)
         } label: { Label("Remove project", systemImage: "minus.circle") }
     }
-
-    @State private var droppedPath: String? = nil
 
     /// Recently-touched sessions across every project — the flat
     /// "watch and resume" rail at the top of the sidebar.
@@ -305,8 +304,10 @@ struct ProjectInitial: View {
     }
 
     private var tint: Color {
-        // Map name hash to one of the Atom palette accents for stable variety.
-        let hue = abs(name.hashValue) % 6
+        // Sum of UTF-8 bytes, not `hashValue` — `String.hashValue` is
+        // seeded per process launch, so a project's colour would change
+        // every time the app restarts.
+        let hue = name.utf8.reduce(0) { $0 &+ Int($1) } % 6
         switch hue {
         case 0: return Palette.blue
         case 1: return Palette.purple

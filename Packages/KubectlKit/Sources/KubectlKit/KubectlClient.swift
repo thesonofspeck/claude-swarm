@@ -172,37 +172,11 @@ public actor KubectlClient {
         )
     }
 
-    public func rolloutStatus(name: String, context: String?, namespace: String?) async throws -> String {
-        let r = try await runner.run(
-            ["rollout", "status", "deployment/\(name)", "--watch=false"],
-            context: context, namespace: namespace
-        )
-        return r.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     public func scaleDeployment(name: String, replicas: Int, context: String?, namespace: String?) async throws {
         _ = try await runner.run(
             ["scale", "deployment/\(name)", "--replicas=\(replicas)"],
             context: context, namespace: namespace
         )
-    }
-
-    /// One-shot logs read (no follow). Caller can pass `tail` to limit
-    /// volume — defaults to the last 500 lines.
-    public func logs(
-        pod: String,
-        container: String? = nil,
-        context: String?,
-        namespace: String?,
-        tail: Int = 500
-    ) async throws -> String {
-        var args = ["logs", pod, "--tail=\(tail)"]
-        if let container, !container.isEmpty {
-            args.append("-c")
-            args.append(container)
-        }
-        let r = try await runner.run(args, context: context, namespace: namespace, timeout: 60)
-        return r.stdout
     }
 
     /// `kubectl logs -f` streamed line-by-line. Cancel the consuming
@@ -220,12 +194,5 @@ public actor KubectlClient {
             args.append(container)
         }
         return runner.runStreaming(args, context: context, namespace: namespace)
-    }
-
-    public func deletePod(name: String, context: String?, namespace: String?) async throws {
-        _ = try await runner.run(
-            ["delete", "pod", name],
-            context: context, namespace: namespace
-        )
     }
 }

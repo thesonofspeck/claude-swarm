@@ -29,6 +29,7 @@ public actor SymbolIndex {
     private var byFile: [URL: (mtime: Date, symbols: [Symbol])] = [:]
     private var byName: [String: [Symbol]] = [:]
     private var refreshing: Bool = false
+    private var pendingRescan: Bool = false
 
     public init(worktreeRoot: URL) {
         self.worktreeRoot = worktreeRoot
@@ -46,14 +47,22 @@ public actor SymbolIndex {
 
     /// Walk the worktree, parse files whose mtime moved, drop entries
     /// for files that disappeared, and rebuild the `byName` map. Safe to
-    /// call repeatedly — overlapping refreshes coalesce.
+    /// call repeatedly — a refresh requested mid-scan triggers exactly
+    /// one more scan afterward so an edit landing during a scan is never
+    /// missed.
     public func refresh() async {
-        if refreshing { return }
+        if refreshing {
+            pendingRescan = true
+            return
+        }
         refreshing = true
         defer { refreshing = false }
-        let snapshot = byFile.mapValues { $0.mtime }
-        let result = await Self.scan(root: worktreeRoot, existing: snapshot)
-        merge(result)
+        repeat {
+            pendingRescan = false
+            let snapshot = byFile.mapValues { $0.mtime }
+            let result = await Self.scan(root: worktreeRoot, existing: snapshot)
+            merge(result)
+        } while pendingRescan
     }
 
     private struct ScanResult: Sendable {

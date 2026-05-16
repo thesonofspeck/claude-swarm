@@ -56,22 +56,24 @@ public enum AgentRunParser {
 
     // Compile regexes once. Building NSRegularExpression on every parse
     // (six per call previously) was a measurable chunk of the cost.
-    private static let boundarySubagentRegex: NSRegularExpression? =
-        try? NSRegularExpression(pattern: #"(?i)subagent:\s*\S+"#)
-    private static let agentNameTaskRegex: NSRegularExpression? =
-        try? NSRegularExpression(pattern: #"Task\((["']?)([^"')]+)\1\)"#)
-    private static let agentNameSubRegex: NSRegularExpression? =
-        try? NSRegularExpression(pattern: #"(?i)subagent:\s*([\w-]+)"#)
-    private static let promptRegex: NSRegularExpression? =
-        try? NSRegularExpression(pattern: #"(?ims)prompt:\s*"?(.+?)"?\n"#)
-    private static let resultRegex: NSRegularExpression? =
-        try? NSRegularExpression(pattern: #"(?ims)result:\s*(.+?)(?:\n\n|$)"#)
-    private static let failedRegex: NSRegularExpression? =
-        try? NSRegularExpression(pattern: #"(?i)\b(failed|error)\b"#)
-    private static let succeededRegex: NSRegularExpression? =
-        try? NSRegularExpression(pattern: #"(?i)\b(succeeded|done|complete)\b"#)
-    private static let sessionEndedRegex: NSRegularExpression? =
-        try? NSRegularExpression(pattern: #"(?i)session\s*(ended|finished)"#)
+    // Patterns are compile-time constants and known-valid, so `try!` is
+    // correct here — it removes a dead optional-guard from every use.
+    private static let boundarySubagentRegex =
+        try! NSRegularExpression(pattern: #"(?i)subagent:\s*\S+"#)
+    private static let agentNameTaskRegex =
+        try! NSRegularExpression(pattern: #"Task\((["']?)([^"')]+)\1\)"#)
+    private static let agentNameSubRegex =
+        try! NSRegularExpression(pattern: #"(?i)subagent:\s*([\w-]+)"#)
+    private static let promptRegex =
+        try! NSRegularExpression(pattern: #"(?ims)prompt:\s*"?(.+?)"?\n"#)
+    private static let resultRegex =
+        try! NSRegularExpression(pattern: #"(?ims)result:\s*(.+?)(?:\n\n|$)"#)
+    private static let failedRegex =
+        try! NSRegularExpression(pattern: #"(?i)\b(failed|error)\b"#)
+    private static let succeededRegex =
+        try! NSRegularExpression(pattern: #"(?i)\b(succeeded|done|complete)\b"#)
+    private static let sessionEndedRegex =
+        try! NSRegularExpression(pattern: #"(?i)session\s*(ended|finished)"#)
 
     /// Parses a transcript file. Returns the root run (always team-lead in
     /// the bundled agent set, but other primary agents map to their own
@@ -147,7 +149,7 @@ public enum AgentRunParser {
         if line.contains("Task(") { return true }
         let s = String(line)
         let range = NSRange(s.startIndex..<s.endIndex, in: s)
-        return boundarySubagentRegex?.firstMatch(in: s, range: range) != nil
+        return boundarySubagentRegex.firstMatch(in: s, range: range) != nil
     }
 
     private static func runFromBlock(_ block: Substring) -> AgentRun? {
@@ -180,8 +182,7 @@ public enum AgentRunParser {
         return .running
     }
 
-    private static func firstMatch(_ text: String, regex: NSRegularExpression?, group: Int = 1) -> String? {
-        guard let regex else { return nil }
+    private static func firstMatch(_ text: String, regex: NSRegularExpression, group: Int = 1) -> String? {
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         guard let match = regex.firstMatch(in: text, range: range),
               match.numberOfRanges > group,
@@ -190,8 +191,7 @@ public enum AgentRunParser {
         return String(text[r]).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static func matches(_ text: String, regex: NSRegularExpression?) -> Bool {
-        guard let regex else { return false }
+    private static func matches(_ text: String, regex: NSRegularExpression) -> Bool {
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         return regex.firstMatch(in: text, range: range) != nil
     }

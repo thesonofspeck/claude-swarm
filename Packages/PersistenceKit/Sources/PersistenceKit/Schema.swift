@@ -92,5 +92,12 @@ public enum Schema {
                 t.add(column: "kubeNamespace", .text)
             }
         }
+
+        // v5 — the Welcome rails and caches sort by fetchedAt; without
+        // these indexes every refresh was a full scan + sort.
+        migrator.registerMigration("v5_cache_indexes") { db in
+            try db.create(index: "idx_task_cache_fetchedAt", on: "task_cache", columns: ["fetchedAt"])
+            try db.create(index: "idx_pr_cache_fetchedAt", on: "pr_cache", columns: ["fetchedAt"])
+        }
     }
 }

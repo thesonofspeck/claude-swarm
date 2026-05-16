@@ -366,7 +366,7 @@ struct OnboardingWizard: View {
     private var primaryTitle: String {
         switch step {
         case .source: return "Continue"
-        case .fetch: return source == .local ? "Continue" : "Continue"
+        case .fetch: return "Continue"
         case .configure: return "Add project"
         }
     }

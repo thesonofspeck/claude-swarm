@@ -39,7 +39,11 @@ public struct SymbolNavigator: Sendable {
         if let index {
             let indexed = await index.lookup(name)
             if !indexed.isEmpty {
+                // Sort before truncating — `lookup` returns dictionary
+                // iteration order, which would make the "first match"
+                // nondeterministic across runs.
                 return indexed
+                    .sorted { ($0.file.path, $0.line) < ($1.file.path, $1.line) }
                     .prefix(limit)
                     .map { Match(symbol: $0, root: worktreeRoot) }
             }
