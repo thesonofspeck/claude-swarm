@@ -283,15 +283,11 @@ struct PRReviewSheet: View {
         error = nil
         do {
             try await onSubmit(draft)
-            await MainActor.run {
-                submitting = false
-                dismiss()
-            }
+            submitting = false
+            dismiss()
         } catch {
-            await MainActor.run {
-                self.error = "Could not submit: \(error.localizedDescription)"
-                submitting = false
-            }
+            self.error = "Could not submit: \(error.localizedDescription)"
+            submitting = false
         }
     }
 }

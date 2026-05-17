@@ -125,10 +125,8 @@ public final class RemoteCoordinator {
     public func refreshPaired() async {
         let all = await store.all()
         let live = Set(server.pairedDeviceIds())
-        await MainActor.run {
-            self.pairedDevices = all
-            self.liveDeviceIds = live
-        }
+        pairedDevices = all
+        liveDeviceIds = live
         reconcileSleepGuard()
     }
 

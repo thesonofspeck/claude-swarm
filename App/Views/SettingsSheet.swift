@@ -446,13 +446,11 @@ struct SettingsSheet: View {
         let path = env.settings.claudeExecutable
         let branch = env.settings.defaultBaseBranch
         let status = await env.github.authStatus()
-        await MainActor.run {
-            wrikeStored = stored
-            claudePath = path
-            defaultBranch = branch
-            ghAuthenticated = status.authenticated
-            ghAuthLine = status.user.map { "Logged in as \($0)" } ?? status.raw
-        }
+        wrikeStored = stored
+        claudePath = path
+        defaultBranch = branch
+        ghAuthenticated = status.authenticated
+        ghAuthLine = status.user.map { "Logged in as \($0)" } ?? status.raw
     }
 
     private func save() {

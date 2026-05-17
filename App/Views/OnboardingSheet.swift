@@ -211,10 +211,8 @@ struct OnboardingSheet: View {
 
     private func checkGh() async {
         let s = await env.github.authStatus()
-        await MainActor.run {
-            ghAuthenticated = s.authenticated
-            ghLine = s.user.map { "Logged in as \($0)" } ?? s.raw
-        }
+        ghAuthenticated = s.authenticated
+        ghLine = s.user.map { "Logged in as \($0)" } ?? s.raw
     }
 }
 
@@ -291,12 +289,11 @@ struct ToolsStep: View {
     }
 
     private func detectAll() async {
-        detecting = true        let overrides = currentOverrides()
+        detecting = true
+        let overrides = currentOverrides()
         let result = await detector.detectAll(overrides: overrides)
-        await MainActor.run {
-            statuses = result
-            detecting = false
-        }
+        statuses = result
+        detecting = false
     }
 
     private func currentOverrides() -> [String: String] {
@@ -381,7 +378,8 @@ struct ToolsStep: View {
 
     private func install(_ tool: Tool) async {
         guard let formula = tool.brewFormula else { return }
-        _ = installing.insert(tool.id); installLog[tool.id] = ""        do {
+        _ = installing.insert(tool.id); installLog[tool.id] = ""
+        do {
             try await installer.install(formula: formula) { line in
                 Task { @MainActor in
                     installLog[tool.id, default: ""].append(line)
@@ -389,11 +387,10 @@ struct ToolsStep: View {
             }
             await detectAll()
         } catch {
-            await MainActor.run {
-                installLog[tool.id, default: ""].append("\n\(error.localizedDescription)\n")
-            }
+            installLog[tool.id, default: ""].append("\n\(error.localizedDescription)\n")
         }
-        _ = installing.remove(tool.id)    }
+        _ = installing.remove(tool.id)
+    }
 
     private func chooseManual(for tool: Tool) {
         let panel = NSOpenPanel()

@@ -326,7 +326,8 @@ struct PRTab: View {
         guard let project, let pr else { return }
         let body = (replyDrafts[comment.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
-        _ = posting.insert(comment.id)        do {
+        _ = posting.insert(comment.id)
+        do {
             // ?? uses an autoclosure that can't carry try/await; resolve
             // the remote once and fall back to its owner/repo if either
             // project field is missing.
@@ -338,34 +339,27 @@ struct PRTab: View {
                 resolved = (project.githubOwner ?? detected.owner,
                             project.githubRepo ?? detected.repo)
             }
-            let owner = resolved.owner
-            let repo = resolved.repo
             try await env.github.replyToReviewComment(
-                owner: owner, repo: repo, number: pr.number,
+                owner: resolved.owner, repo: resolved.repo, number: pr.number,
                 commentId: comment.id, body: body
             )
-            await MainActor.run {
-                replyDrafts[comment.id] = ""
-                posting.remove(comment.id)
-            }
+            replyDrafts[comment.id] = ""
+            posting.remove(comment.id)
             await load()
         } catch {
-            await MainActor.run {
-                self.error = "Could not post reply: \(error.localizedDescription)"
-                posting.remove(comment.id)
-            }
+            self.error = "Could not post reply: \(error.localizedDescription)"
+            posting.remove(comment.id)
         }
     }
 
     private func resolve(thread: GHReviewThread) async {
         do {
             try await env.github.resolveReviewThread(threadId: thread.id)
-            await MainActor.run {
-                if let rootId = thread.firstCommentId { resolvedRoots.insert(rootId) }
-            }
+            if let rootId = thread.firstCommentId { resolvedRoots.insert(rootId) }
             await load()
         } catch {
-            self.error = "Could not resolve: \(error.localizedDescription)"        }
+            self.error = "Could not resolve: \(error.localizedDescription)"
+        }
     }
 
     @ViewBuilder
@@ -426,7 +420,9 @@ struct PRTab: View {
 
     private func load() async {
         guard let project else { return }
-        loading = true; error = nil        let dir = URL(fileURLWithPath: session.worktreePath)
+        loading = true
+        error = nil
+        let dir = URL(fileURLWithPath: session.worktreePath)
         do {
             if let pr = try await env.github.pullRequestForBranch(in: dir, branch: session.branch) {
                 let owner: String
@@ -443,35 +439,30 @@ struct PRTab: View {
                 async let cs = env.github.reviewComments(owner: owner, repo: repo, number: pr.number)
                 async let ths = (try? await env.github.reviewThreads(owner: owner, repo: repo, number: pr.number)) ?? []
                 let (rs, csL, thsL) = try await (runs, cs, ths)
-                await MainActor.run {
-                    self.pr = pr
-                    self.checks = rs
-                    self.comments = csL
-                    self.threads = thsL
-                    if pr.merged == true, let id = session.taskId {
-                        Task { await env.wrikeBridge.transition(taskId: id, to: .done) }
-                    }
-                    loading = false
+                self.pr = pr
+                self.checks = rs
+                self.comments = csL
+                self.threads = thsL
+                if pr.merged == true, let id = session.taskId {
+                    Task { await env.wrikeBridge.transition(taskId: id, to: .done) }
                 }
             } else {
-                await MainActor.run {
-                    self.pr = nil
-                    self.checks = []
-                    self.comments = []
-                    loading = false
-                }
+                self.pr = nil
+                self.checks = []
+                self.comments = []
             }
+            loading = false
         } catch {
-            await MainActor.run {
-                self.error = "\(error.localizedDescription)"
-                loading = false
-            }
+            self.error = "\(error.localizedDescription)"
+            loading = false
         }
     }
 
     private func create() async {
         guard let project else { return }
-        creating = true; error = nil        let dir = URL(fileURLWithPath: session.worktreePath)
+        creating = true
+        error = nil
+        let dir = URL(fileURLWithPath: session.worktreePath)
         do {
             try await env.github.pushBranch(in: dir, branch: session.branch)
             let result = try await env.github.createPullRequest(
@@ -491,16 +482,17 @@ struct PRTab: View {
                 await env.wrikeBridge.transition(taskId: id, to: .inReview)
             }
             await load()
-            creating = false        } catch {
-            await MainActor.run {
-                self.error = "\(error.localizedDescription)"
-                creating = false
-            }
+            creating = false
+        } catch {
+            self.error = "\(error.localizedDescription)"
+            creating = false
         }
     }
 
     private func draftFromDiff() async {
-        drafting = true; error = nil        do {
+        drafting = true
+        error = nil
+        do {
             let dir = URL(fileURLWithPath: session.worktreePath)
             let files = (try? await env.diff.workingTreeDiff(in: dir)) ?? []
             let diffText = renderDiff(files)
@@ -509,16 +501,12 @@ struct PRTab: View {
                 taskTitle: session.taskTitle,
                 taskBody: nil
             )
-            await MainActor.run {
-                prTitle = draft.title
-                prBody = draft.body
-                drafting = false
-            }
+            prTitle = draft.title
+            prBody = draft.body
+            drafting = false
         } catch {
-            await MainActor.run {
-                self.error = "Couldn't draft: \(error.localizedDescription)"
-                drafting = false
-            }
+            self.error = "Couldn't draft: \(error.localizedDescription)"
+            drafting = false
         }
     }
 

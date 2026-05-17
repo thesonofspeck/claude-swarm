@@ -604,10 +604,9 @@ private struct CloneRepoView: View {
         loadingMine = true
         defer { loadingMine = false }
         do {
-            let mine = try await env.github.listRepos(limit: 100)
-            await MainActor.run { results = mine }
+            results = try await env.github.listRepos(limit: 100)
         } catch {
-            await MainActor.run { self.error = "Couldn't list your repos: \(error.localizedDescription)" }
+            self.error = "Couldn't list your repos: \(error.localizedDescription)"
         }
     }
 
@@ -617,10 +616,9 @@ private struct CloneRepoView: View {
         searching = true
         defer { searching = false }
         do {
-            let hits = try await env.github.searchRepos(query: q, limit: 50)
-            await MainActor.run { results = hits }
+            results = try await env.github.searchRepos(query: q, limit: 50)
         } catch {
-            await MainActor.run { self.error = "\(error.localizedDescription)" }
+            self.error = "\(error.localizedDescription)"
         }
     }
 
@@ -760,11 +758,9 @@ private struct CreateRepoView: View {
         loadingUser = true
         defer { loadingUser = false }
         let status = await env.github.authStatus()
-        await MainActor.run {
-            owner = status.user ?? ""
-            if !status.authenticated {
-                error = "GitHub not authenticated. Run `gh auth login` and try again."
-            }
+        owner = status.user ?? ""
+        if !status.authenticated {
+            error = "GitHub not authenticated. Run `gh auth login` and try again."
         }
     }
 
@@ -882,13 +878,13 @@ private struct WrikeFolderPicker: View {
 
     private func load() async {
         let has = await env.wrike.hasToken()
-        await MainActor.run { hasToken = has }
+        hasToken = has
         guard has else { return }
         loading = true
         defer { loading = false }
         do {
             let f = try await env.wrike.folders()
-            await MainActor.run { folders = f.sorted { $0.title.lowercased() < $1.title.lowercased() } }
+            folders = f.sorted { $0.title.lowercased() < $1.title.lowercased() }
         } catch {
             // Silent — sheet has plenty of other things to show.
         }

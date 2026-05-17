@@ -75,10 +75,8 @@ struct PairingSheet: View {
         let issued = await env.remote.issueInvite()
         let encoded = (try? PairCodec.encodeInvite(issued)) ?? ""
         let img = await Task.detached { generateQR(from: encoded) }.value
-        await MainActor.run {
-            invite = issued
-            qrImage = img
-        }
+        invite = issued
+        qrImage = img
     }
 }
 

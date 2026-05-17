@@ -76,9 +76,9 @@ public final class GitWorkspace {
 
     private func startListening() {
         let center = self.center
-        eventTask = Task { [weak self] in
+        eventTask = Task { @MainActor [weak self] in
             for await event in await center.events() {
-                await MainActor.run { self?.consume(event) }
+                self?.consume(event)
             }
         }
     }

@@ -316,12 +316,10 @@ struct FilesTab: View {
     private func jumpToSymbol(_ name: String) async {
         let matches = await navigator.definitions(of: name, limit: 5)
         guard let hit = matches.first else {
-            await MainActor.run {
-                jumpHint = "No definition found for \"\(name)\""
-                Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(2))
-                    if jumpHint?.contains(name) == true { jumpHint = nil }
-                }
+            jumpHint = "No definition found for \"\(name)\""
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                if jumpHint?.contains(name) == true { jumpHint = nil }
             }
             return
         }
@@ -330,15 +328,9 @@ struct FilesTab: View {
         selection = url.path
         fileExtension = url.pathExtension.lowercased()
         await loadFile(url)
-        await MainActor.run {
-            editing = true   // Cmd+click into a file → open it editable
-            scrollToLine = hit.line
-            if matches.count > 1 {
-                jumpHint = "\(matches.count) matches — showing first"
-            } else {
-                jumpHint = nil
-            }
-        }
+        editing = true   // Cmd+click into a file → open it editable
+        scrollToLine = hit.line
+        jumpHint = matches.count > 1 ? "\(matches.count) matches — showing first" : nil
     }
 
     private func loadFile(_ url: URL) async {

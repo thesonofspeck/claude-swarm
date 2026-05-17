@@ -248,7 +248,8 @@ struct TasksTab: View {
 
     private func startSession(for task: WrikeTask) async {
         guard let project else { return }
-        starting = true        do {
+        starting = true
+        do {
             let result = try await env.sessionManager.start(
                 for: project,
                 taskId: task.id,
@@ -256,17 +257,13 @@ struct TasksTab: View {
                 initialPrompt: initialPrompt,
                 claudeExecutable: env.settings.claudeExecutable
             )
-            await MainActor.run {
-                registry.register(result.spec)
-                pendingTask = nil
-                starting = false
-            }
+            registry.register(result.spec)
+            pendingTask = nil
+            starting = false
             await env.wrikeBridge.transition(taskId: task.id, to: .inProgress)
         } catch {
-            await MainActor.run {
-                self.error = "Could not start session: \(error.localizedDescription)"
-                starting = false
-            }
+            self.error = "Could not start session: \(error.localizedDescription)"
+            starting = false
         }
     }
 
@@ -274,17 +271,14 @@ struct TasksTab: View {
         guard let project, let folder = project.wrikeFolderId else {
             tasks = []; return
         }
-        loading = true; error = nil        do {
-            let result = try await env.wrike.tasks(in: folder)
-            await MainActor.run {
-                tasks = result
-                loading = false
-            }
+        loading = true
+        error = nil
+        do {
+            tasks = try await env.wrike.tasks(in: folder)
+            loading = false
         } catch {
-            await MainActor.run {
-                self.error = "\(error)"
-                loading = false
-            }
+            self.error = "\(error)"
+            loading = false
         }
     }
 }

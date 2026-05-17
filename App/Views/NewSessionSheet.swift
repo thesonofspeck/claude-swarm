@@ -106,7 +106,8 @@ struct NewSessionSheet: View {
             error = "Pick a project."
             return
         }
-        starting = true; error = nil        do {
+        starting = true; error = nil
+        do {
             let result = try await env.sessionManager.start(
                 for: project,
                 taskId: taskId.isEmpty ? nil : taskId,
@@ -114,36 +115,29 @@ struct NewSessionSheet: View {
                 initialPrompt: prompt.isEmpty ? nil : prompt,
                 claudeExecutable: env.settings.claudeExecutable
             )
-            await MainActor.run {
-                registry.register(result.spec)
-                if !taskId.isEmpty { Task { await env.wrikeBridge.transition(taskId: taskId, to: .inProgress) } }
-                starting = false
-                dismiss()
-            }
+            registry.register(result.spec)
+            if !taskId.isEmpty { Task { await env.wrikeBridge.transition(taskId: taskId, to: .inProgress) } }
+            starting = false
+            dismiss()
         } catch {
-            await MainActor.run {
-                self.error = "Could not start session: \(error.localizedDescription)"
-                starting = false
-            }
+            self.error = "Could not start session: \(error.localizedDescription)"
+            starting = false
         }
     }
 
     private func draftPrompt() async {
         let project = projectList.projects.first { $0.id == projectId }
-        drafting = true; error = nil        do {
+        drafting = true; error = nil
+        do {
             let result = try await env.llm.draftSessionPrompt(
                 from: taskTitle,
                 projectName: project?.name
             )
-            await MainActor.run {
-                prompt = result
-                drafting = false
-            }
+            prompt = result
+            drafting = false
         } catch {
-            await MainActor.run {
-                self.error = "Couldn't draft: \(error.localizedDescription)"
-                drafting = false
-            }
+            self.error = "Couldn't draft: \(error.localizedDescription)"
+            drafting = false
         }
     }
 }
